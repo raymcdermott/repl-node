@@ -71,7 +71,7 @@
 
 (defmethod ^:private -event-msg-handler :reptile/repl
   [{:keys [?data]}]
-  (when-let [prepl (or @shared-repl (reset! shared-repl (repl/team-prepl @repl-socket)))]
+  (when-let [prepl (or @shared-repl (reset! shared-repl (repl/shared-prepl @repl-socket)))]
     (let [input-form (:form ?data)
           response   {:prepl-response (repl/shared-eval prepl input-form)}]
       ;; Send the results to everyone

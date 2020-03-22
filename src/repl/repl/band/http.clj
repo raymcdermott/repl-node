@@ -11,10 +11,11 @@
             [taoensso.sente.packers.transit :as sente-transit]
             [taoensso.sente :as sente]
             [repl.repl.band.socket-repl :as repl]
-            [repl.repl.band.team :as team]
-            [repl.repl.band.names :as names]
-            [repl.repl.band.completion :as completion])
-  (:import (java.util UUID)))
+            [repl.repl.band.completion :as completion]
+            [clojure.spec.alpha :as s])
+  (:import (java.util UUID)
+           (clojure.lang DynamicClassLoader)
+           (java.io Closeable)))
 
 ; TODO: move to a mesg per client model (not broadcast on uid)
 ; TODO: then kill clients that don't ack
@@ -76,103 +77,69 @@
   (let [loop-enabled? (swap! broadcast-enabled?_ not)]
     (?reply-fn loop-enabled?)))
 
-#_(defmethod ^:private -event-msg-handler :reptile/doc-hint
-    [{:keys [?data]}]
-    (let [{:keys [doc-ns doc-symbol]} ?data
-          doc         (completion/code-documentation doc-ns doc-symbol)
-          shared-data {:user user-name :?????? completions}]
-      (doseq [uid (:any @connected-uids)]
-        (chsk-send! uid [:fast-push/keystrokes shared-data]))))
-
-;; TODO prove this idea: we can update this, and then via a watcher - switch to another app dynamically
-(defonce ^:private repl-socket (atom nil))
-
-(defonce ^:private team-id (atom "apropos"))
-
 ;;;;;;;;;;; LOGIN
 
-;(s/def ::user
-;  (s/keys :req [::user-name ::uid]))
+(s/def ::client-id string?)
 
-(defn >send
-  "Find the team with the `team-name` and send `msg` to each member"
-  [team-name msg]
-  (let [users (::team/team-members (team/safe-find-team! team-name))]
-    (doall
-      (map (fn [user]
-             (println :user user :msg msg)
-             (chsk-send! (::team/uid user) msg)) users))))
+(s/def ::connected-user
+  (s/keys :req [::client-id]))
 
-(defn fetch-users
-  [team connected-users]
-  ;; Filter clients by team
-  (get-in connected-users [:reptile :clients]))
+(s/def ::user
+  (s/merge ::connected-user
+           (s/keys :req [::user-name ::uid])))
+
+(s/def ::users
+  (s/coll-of ::user :kind :map))
+
 
 ;; Sente uses Ring by default but we use WS to track users
-(defonce ^:private connected-users (atom {}))
+(defonce ^:private connected-users (atom []))
+(defonce ^:private node-prepl (atom nil))
 
-;; TODO drop this ... base it on teams instead
-#_(add-watch connected-users :connected-users
-             (fn [_ _ old new]
-               (when (not= old new)
-                 (println :connected-users new))))
+(defn >send
+  "Send `msg` to each member"
+  [msg]
+  (doall (map (fn [user]
+                (println :user user :msg msg)
+                (chsk-send! (::uid user) msg)) @connected-users)))
 
-(defn- get-user-id
-  [state client-id]
-  (first (keep (fn [[id client]]
-                 (when (= (:client-id client) client-id) id))
-               (get-in state [:reptile :clients]))))
+;; Debug
+(add-watch connected-users :connected-users
+           (fn [_ _ old new]
+             (when (not= old new)
+               (println :connected-users new))))
 
 (defonce ^:private socket-connections (atom {}))
-
-;; TODO ... restore if we need to do the ping timeout thing
-#_(add-watch socket-connections :socket-connections
-             (fn [_ _ old new]
-               (when (not= old new)
-                 (println "socket-connections" new))))
 
 ;; REPL
 (defmethod ^:private -event-msg-handler :reptile/keystrokes
   ;; Send the keystrokes to the team
   [{:keys [?data]}]
-  (when-let [team (team/safe-find-team! (:team-name ?data))]
-    (let [{:keys [form prefixed-form to-complete user-name]} ?data
-          completions (completion/code-completions to-complete prefixed-form)
-          shared-data {:form form :user user-name :completions completions}]
-      (>send (::team/team-name team) [:reptile/keystrokes shared-data]))))
+  (let [{:keys [form prefixed-form to-complete user-name]} ?data
+        completions (completion/code-completions to-complete prefixed-form)
+        shared-data {:form form :user user-name :completions completions}]
+    (>send [:reptile/keystrokes shared-data])))
 
 (defmethod ^:private -event-msg-handler :reptile/repl
   [{:keys [?data]}]
-  (when-let [team (team/safe-find-team! (:team-name ?data))]
-    (let [input-form (:form ?data)
-          prepl      (::team/prepl team)
-          result     {:prepl-response (repl/shared-eval prepl input-form)}
-          response   (merge ?data result)]
-      (>send (::team/team-name team) [:reptile/eval response]))))
+  (if-not @node-prepl                                       ;; Create on first use
+    (reset! node-prepl (repl/shared-prepl)))
 
-(defn- shutdown-repl
-  [repl]
-  ;; TODO eventually shutdown the incoming REPL, now just shut all
-  )
+  (let [input-form (:form ?data)
+        result     {:prepl-response (repl/shared-eval @node-prepl input-form)}
+        response   (merge ?data result)]
+    (>send [:reptile/eval response])))
 
 (defn- register-socket [state client-id]
   (let [kw-client (keyword client-id)]
     (assoc state kw-client {})))
 
-;; TODO tweak dropping teams, etc...
-(defn- register-user [state team user uid]
-  (let [team-name    (::team/team-name team)
-        team-user    {::team/user-name user ::team/uid uid}
-        updated-team (team/set-team-user! team-name team-user)]
-    (>send team-name [:reptile/editors (::team/team-members updated-team)])
+(defn- register-user [user uid]
+  (swap! connected-users {::user-name user ::uid uid})
+  (>send [:reptile/editors @connected-users]))
 
-    ;; TODO don't need this ... should trigger change event on team
-    (assoc-in state [:reptile :clients (keyword user)]
-              {:network-user-id uid :team-name team-name})))
-
-(defn- deregister-user [state client-id]
-  (let [user (get-user-id state client-id)]
-    (update-in state [:reptile :clients] dissoc user)))
+(defn- deregister-user [client-id]
+  (swap! @connected-users dissoc client-id))
 
 ; the dropping thing needs to be re-thought, maybe via core.async timeouts
 (defn- register-socket-ping [state client-id]
@@ -192,52 +159,26 @@
   ; maybe we kill if no ping too
   (swap! socket-connections register-socket-ping client-id))
 
-
 (defonce ^:private shared-secret (atom nil))
 
-(defn- logout [{:keys [client-id _ state]}]
-  (swap! state deregister-user client-id))
+(defn- logout [{:keys [client-id _]}]
+  (deregister-user client-id))
 
-(defn- auth [{:keys [?data ?reply-fn state]}]
-  (let [{:keys [user network-user-id secret team-name]} ?data
-        team (team/find-team team-name)]
-    (if (some #{secret} (::team/secrets team))
-      (do (swap! state register-user team user network-user-id)
+(defn- login [{:keys [?data ?reply-fn]}]
+  (let [{:keys [user network-user-id secret]} ?data]
+    (if (= secret shared-secret)
+      (do (register-user user network-user-id)
           (?reply-fn :login-ok))
       (?reply-fn :login-failed))))
 
 (defmethod ^:private -event-msg-handler :reptile/login
   [ev-msg]
-  (auth (assoc ev-msg :state connected-users)))
+  (login ev-msg))
 
-;; TODO there are some 'obscurity' protections now (WS, transit, data string)
-;; TODO add more once we get going ...
-;; TODO drop idle teams, keep active teams to N
-;; TODO check if a teams absorbs all the RAM / CPU  / IO
-(defn- team-random-data
-  "Generate a team name, secret and prepl"
-  [{:keys [?reply-fn ?data]}]
-  (let [team-name   (names/gen-name)
-        team-secret (str (UUID/randomUUID))
-        team-prepl  (repl/team-prepl {:host :self :port 0})]
-    (cond
-      (or (team/team-name-taken? team-name) (not (string? (first ?data))))
-      (?reply-fn :team-random-data-failed)
-
-      :else
-      (do (team/set-team! {::team/team-name team-name
-                           ::team/secrets   #{team-secret}
-                           ::team/prepl     team-prepl})
-          (?reply-fn {:team-name team-name :team-secret team-secret})))))
-
-(defmethod ^:private -event-msg-handler :reptile/team-random-data
-  [ev-msg]
-  (team-random-data ev-msg))
-
-;; TODO
+;; TODO check contents of the message
 (defmethod ^:private -event-msg-handler :reptile/logout
   [ev-msg]
-  (logout (assoc ev-msg :state connected-users)))
+  (logout ev-msg))
 
 ;;;; Sente event router (our `event-msg-handler` loop)
 
@@ -267,7 +208,7 @@
                          (future @p)                        ; Workaround for Ref. https://goo.gl/kLvced
                          [(aleph.netty/port server)
                           (fn []
-                            (.close ^java.io.Closeable server)
+                            (.close ^Closeable server)
                             (deliver p nil))])
         uri          (format "http://localhost:%s/" port)]
 
@@ -284,28 +225,13 @@
   (start-router!)
   (start-web-server! port))
 
+;; TODO have a default port
 (defn start-reptile-server
-  [reptile-port reptile-secret & args]
-  (let [{:keys [server-port secret]}
-        (if (= (count args) 4)
-          (let [port        (Integer/parseInt reptile-port)
-                socket-host (first args)
-                socket-port (last args)]
-            (reset! repl-socket {:host socket-host :port socket-port})
-            {:server-port port :secret reptile-secret})
-          (do
-            (reset! repl-socket {:host :self :port 0})
-            {:server-port reptile-port :secret reptile-secret}))]
-
-    (reset! shared-secret secret)
-
+  [reptile-port reptile-secret]
+  (reset! shared-secret reptile-secret)
+  (let [port (Integer/parseInt reptile-port)]
     ; Need DynamicClassLoader to support add-lib
     (let [current-thread (Thread/currentThread)
           cl             (.getContextClassLoader current-thread)]
-      (.setContextClassLoader current-thread (clojure.lang.DynamicClassLoader. cl))
-      (start! server-port))
-
-    ;; Return all material needed to restart the app
-    ;{:band-port band-port :secret secret :repl-socket @repl-socket}
-
-    ))
+      (.setContextClassLoader current-thread (DynamicClassLoader. cl))
+      (start! port))))

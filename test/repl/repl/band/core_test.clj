@@ -7,9 +7,9 @@
     [repl.repl.band.socket-repl :as repl]))
 
 ; use this as a fixture for each test?
-(defn evaller [& {:keys [comp-first?]
+(defn- evaller [& {:keys [comp-first?]
                   :or   {comp-first? false}}]
-  (let [prepl       (repl/team-prepl {:host :self :port 0 :server-daemon true})
+  (let [prepl       (repl/shared-prepl {:server-daemon true})
         shared-eval (partial repl/shared-eval prepl)]
     (if comp-first? (comp first shared-eval) shared-eval)))
 
@@ -104,7 +104,7 @@
       (let [_ (shared-eval "(def x 1)")
             _ (shared-eval "(def lst '(a b c))")
             {:keys [val]} (shared-eval "`(fred x ~x lst ~@lst 7 8 :nine)")]
-        (is (= "(user/fred user/x 1 user/lst a b c 7 8 :nine)" val)))
+        (is (= "(repl.repl.band.core-test/fred repl.repl.band.core-test/x 1 repl.repl.band.core-test/lst a b c 7 8 :nine)" val)))
 
       (let [{:keys [val]} (shared-eval "#{1}")]
         (is (= "#{1}" val)))
@@ -212,7 +212,7 @@
         (is (= :ret tag))
         (is (= val "#'user/ns-x2")))
 
-      (let [{:keys [val tag]} (shared-eval "*ns*")]
+      (let [{:keys [val tag]} (shared-eval "(in-ns 'user)")]
         (is (= :ret tag))
         (is (str/ends-with? val "\"user\"]"))
         (is (str/starts-with? val "#object")))
@@ -220,19 +220,12 @@
       (let [{:keys [val]} (shared-eval "(ns-x2 17)")]
         (is (= "34" val)))
 
-      ; TODO investigate ns support
-      #_(let [{:keys [val tag] :as x} (shared-eval "(in-ns 'repl-test)")]
-          (println "111 val" val "x" x)
+      (let [{:keys [val tag]} (shared-eval "(in-ns 'repl-test)")]
           (is (= :ret tag))
           (is (str/ends-with? val "\"repl-test\"]"))
           (is (str/starts-with? val "#object"))
 
-          (let [{:keys [val tag] :as x} (shared-eval "*ns*")]
-            (is (= :ret tag))
-            (is (str/ends-with? val "\"repl-test\"]"))
-            (is (str/starts-with? val "#object")))
-
-          (let [{:keys [val tag] :as x} (shared-eval "(in-ns 'user)")]
+          (let [{:keys [val tag]} (shared-eval "(in-ns 'user)")]
             (is (= :ret tag))
             (is (str/ends-with? val "\"user\"]"))
             (is (str/starts-with? val "#object")))))))

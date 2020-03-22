@@ -3,6 +3,8 @@
 
 ; TODO learn the lib in detail
 
+; Have completions on a separate socket
+
 (defn code-documentation
   [doc-ns doc-symbol]
   (let [doc   (compliment/documentation doc-symbol doc-ns)

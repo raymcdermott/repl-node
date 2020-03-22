@@ -7,5 +7,5 @@
 ;
 ;------------------- ************* -------------------
 
-(boot-and-watch-fs! "src" 56665 "warm-blooded-lizards-rock")
+(boot-and-watch-fs! "src" "56665" "warm-blooded-lizards-rock")
 
