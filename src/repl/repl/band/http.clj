@@ -104,6 +104,12 @@
                 (chsk-send! (::uid user) msg)) @connected-users)))
 
 ;; Debug
+(add-watch connected-uids :connected-uids
+           (fn [_ _ old new]
+             (when (not= old new)
+               (println :connected-uids new))))
+
+;; Debug
 (add-watch connected-users :connected-users
            (fn [_ _ old new]
              (when (not= old new)
@@ -135,7 +141,7 @@
     (assoc state kw-client {})))
 
 (defn- register-user [user uid]
-  (swap! connected-users {::user-name user ::uid uid})
+  (swap! connected-users conj {::user-name user ::uid uid})
   (>send [:reptile/editors @connected-users]))
 
 (defn- deregister-user [client-id]
@@ -166,19 +172,30 @@
 
 (defn- login [{:keys [?data ?reply-fn]}]
   (let [{:keys [user network-user-id secret]} ?data]
-    (if (= secret shared-secret)
+    (if (= secret @shared-secret)
       (do (register-user user network-user-id)
           (?reply-fn :login-ok))
       (?reply-fn :login-failed))))
 
 (defmethod ^:private -event-msg-handler :reptile/login
-  [ev-msg]
+  [{:keys [?data] :as ev-msg}]
+  (println :login :?data ?data)
   (login ev-msg))
 
 ;; TODO check contents of the message
 (defmethod ^:private -event-msg-handler :reptile/logout
   [ev-msg]
   (logout ev-msg))
+
+(defmethod ^:private -event-msg-handler :reptile/team-random-data
+  [{:keys [?reply-fn] :as ev-msg}]
+
+  (let [{:keys [uid client-id ?data]} ev-msg]
+    (println :team-random-data :uid uid)
+    (println :team-random-data :client-id client-id)
+    (println :team-random-data :?data ?data))
+
+  (?reply-fn {:team-name "apropos" :team-secret @shared-secret}))
 
 ;;;; Sente event router (our `event-msg-handler` loop)
 
