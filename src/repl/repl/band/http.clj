@@ -127,8 +127,8 @@
     (reset! node-prepl (repl/shared-prepl)))
 
   (let [input-form (:form ?data)
-        result {:prepl-response (repl/shared-eval @node-prepl input-form)}
-        response (merge ?data result)]
+        result     {:prepl-response (repl/shared-eval @node-prepl input-form)}
+        response   (merge ?data result)]
     (>send [:repl-repl/eval response])))
 
 (defn- register-socket [state client-id]
@@ -137,19 +137,13 @@
 ;; TODO: Replace existing user name records
 ;; TODO: Bring back the team
 
-(defn- register-user [name uid]
-  (swap! connected-users
-         #(repl-user/+user % (repl-user/->user name uid)))
+(defn- register-user [login-user]
+  (swap! connected-users #(repl-user/+user % login-user))
   (>send [:repl-repl/editors @connected-users]))
 
-(defn- deregister-user [uid]
-  (println :deregister-user
-           :uid uid
-           :type (type uid)
-           :list @connected-users)
-  (let [{::repl-user/keys [name]}
-        (repl-user/get-user-by-uid uid @connected-users)]
-    (swap! connected-users #(repl-user/<-user name %))))
+(defn- deregister-user [username]
+  (println :deregister-user :username username :list @connected-users)
+  (swap! connected-users #(repl-user/<-user username %)))
 
 ; the dropping thing needs to be re-thought, maybe via core.async timeouts
 (defn- register-socket-ping [state client-id]
@@ -158,13 +152,16 @@
 
 (defmethod ^:private -event-msg-handler :chsk/uidport-open
   [{:keys [client-id]}]
+  ;(println :uidport-open client-id)
   (swap! socket-connections register-socket client-id))
 
 (defmethod ^:private -event-msg-handler :chsk/uidport-close
   [{:keys [client-id]}]
-  (let [{::repl-user/keys [name]}
-        (repl-user/get-user-by-uid client-id @connected-users)]
-    (swap! connected-users #(repl-user/<-user name %))))
+  ;(println :uidport-close client-id)
+  #_(let [{::repl-user/keys [name]}
+          (repl-user/get-user-by-uid client-id @connected-users)]
+      (swap! connected-users #(repl-user/<-user name %)))
+  )
 
 (defmethod ^:private -event-msg-handler :chsk/ws-ping
   [{:keys [client-id]}]
@@ -173,23 +170,21 @@
 
 (defonce ^:private shared-secret (atom nil))
 
-(defn- logout [{:keys [client-id _]}]
-  (println :client-id client-id :type (type client-id))
-  (deregister-user client-id))
+(defn- logout [{:keys [?data]}]
+  (deregister-user ?data))
 
 (defn- login [{:keys [?data ?reply-fn]}]
-  (let [{:keys [user network-user-id secret]} ?data]
-    (if (= secret @shared-secret)
-      (do (register-user user network-user-id)
-          (?reply-fn :login-ok))
-      (?reply-fn :login-failed))))
+  (println :login :data ?data)
+  ;; TODO what are the barriers?
+  (if (= (::repl-user/name ?data) "ray")
+    (do (register-user ?data)
+        (?reply-fn :login-ok))
+    (?reply-fn :login-failed)))
 
 (defmethod ^:private -event-msg-handler :repl-repl/login
-  [{:keys [?data] :as ev-msg}]
-  (println :login :?data ?data)
+  [ev-msg]
   (login ev-msg))
 
-;; TODO check contents of the message
 (defmethod ^:private -event-msg-handler :repl-repl/logout
   [ev-msg]
   (logout ev-msg))
@@ -197,6 +192,7 @@
 ;; TODO drop the team name messages (that's for the team node)
 (defmethod ^:private -event-msg-handler :repl-repl/team-random-data
   [{:keys [?reply-fn]}]
+  (println :team-random-data)
   (?reply-fn {:team-name "apropos" :team-secret @shared-secret}))
 
 ;;;; Sente event router (our `event-msg-handler` loop)

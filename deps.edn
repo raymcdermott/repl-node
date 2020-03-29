@@ -6,11 +6,11 @@
            aleph                        {:mvn/version "0.4.4"}
            gloss                        {:mvn/version "0.2.6"}
            compojure                    {:mvn/version "1.6.0"}
-           com.taoensso/sente           {:mvn/version "1.15.0"}
+           com.taoensso/sente           {:mvn/version "1.13.1"}
            com.taoensso/timbre          {:mvn/version "4.10.0"}
            ring                         {:mvn/version "1.6.3"}
            ring/ring-defaults           {:mvn/version "0.3.1"}
-           com.cognitect/transit-clj    {:mvn/version "0.8.300"}
+           com.cognitect/transit-clj    {:mvn/version "1.0.324"}
 
            repl-repl/specs              {:local/root "../repl-specs"}}
 
