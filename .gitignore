@@ -3,6 +3,6 @@
 /.lein-*
 /.nrepl-port
 .idea
-reptile-lib.iml
+*.iml
 .cpcache
 db
