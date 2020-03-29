@@ -1,33 +1,35 @@
-{:deps    {org.clojure/clojure          {:mvn/version "1.10.1"}
-           org.clojure/core.async       {:mvn/version "0.4.474"}
-           org.clojure/tools.logging    {:mvn/version "0.4.0"}
-           org.clojure/test.check       {:mvn/version "0.10.0"}
-           compliment                   {:mvn/version "0.3.6"}
-           aleph                        {:mvn/version "0.4.4"}
-           gloss                        {:mvn/version "0.2.6"}
-           compojure                    {:mvn/version "1.6.0"}
-           com.taoensso/sente           {:mvn/version "1.13.1"}
-           com.taoensso/timbre          {:mvn/version "4.10.0"}
-           ring                         {:mvn/version "1.6.3"}
-           ring/ring-defaults           {:mvn/version "0.3.1"}
-           com.cognitect/transit-clj    {:mvn/version "1.0.324"}
+{:deps
+ {org.clojure/clojure       {:mvn/version "1.10.1"}
+  org.clojure/core.async    {:mvn/version "0.4.474"}
+  org.clojure/tools.logging {:mvn/version "0.4.0"}
+  org.clojure/test.check    {:mvn/version "0.10.0"}
+  compliment                {:mvn/version "0.3.6"}
+  aleph                     {:mvn/version "0.4.4"}
+  gloss                     {:mvn/version "0.2.6"}
+  compojure                 {:mvn/version "1.6.0"}
+  com.taoensso/sente        {:mvn/version "1.13.1"}
+  com.taoensso/timbre       {:mvn/version "4.10.0"}
+  ring                      {:mvn/version "1.6.3"}
+  ring/ring-defaults        {:mvn/version "0.3.1"}
+  com.cognitect/transit-clj {:mvn/version "1.0.324"}
 
-           repl-repl/specs              {:local/root "../repl-specs"}}
+  repl-repl/specs           {:local/root "../repl-specs"}}
 
- :aliases {:test
-           {:extra-paths ["test"]
-            :extra-deps  {com.cognitect/test-runner
-                          {:git/url "https://github.com/cognitect-labs/test-runner.git"
-                           :sha     "209b64504cb3bd3b99ecfec7937b358a879f55c1"}}
-            :main-opts   ["-m" "cognitect.test-runner"]}
+ :aliases
+ {:test        {:extra-paths ["test"]
+                :extra-deps  {com.cognitect/test-runner
+                              {:git/url "https://github.com/cognitect-labs/test-runner.git"
+                               :sha     "209b64504cb3bd3b99ecfec7937b358a879f55c1"}}
+                :main-opts   ["-m" "cognitect.test-runner"]}
 
-           :repl
-           {:main-opts ["-r"]}
+  :clj-kondo   {:extra-deps {clj-kondo {:mvn/version "RELEASE"}}
+                :main-opts  ["-m" "clj-kondo.main"]}
 
-           :server-repl
-           {:extra-paths ["dev"]
-            :extra-deps  {clojure-watch {:mvn/version "0.1.14"}}
-            :main-opts   ["-i" "@repl/repl/band/opener.clj" "-r"]}}}
+  :repl        {:main-opts ["-r"]}
+
+  :server-repl {:extra-paths ["dev"]
+                :extra-deps  {clojure-watch {:mvn/version "0.1.14"}}
+                :main-opts   ["-i" "@repl/repl/band/opener.clj" "-r"]}}}
 
 
 

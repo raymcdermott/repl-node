@@ -1,5 +1,6 @@
 (ns repl.repl.band.completion
-  (:require [compliment.core :as compliment]))
+  (:require [clojure.string :as str]
+            [compliment.core :as compliment]))
 
 ; TODO learn the lib in detail
 
@@ -12,8 +13,8 @@
                   clojure.string/split-lines)
         args  (-> lines
                   second
-                  (clojure.string/replace-first "(" "")
-                  (clojure.string/replace-first ")" ""))
+                  (str/replace-first "(" "")
+                  (str/replace-first ")" ""))
         docs  (apply str (drop 2 lines))]
     {:docs docs :args args}))
 

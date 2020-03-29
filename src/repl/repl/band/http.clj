@@ -1,18 +1,18 @@
 (ns repl.repl.band.http
-  (:require [ring.middleware.defaults]
-            [compojure.core :refer [defroutes GET POST]]
-            [compojure.route :as route]
-            [clojure.set :refer [map-invert]]
-            [clojure.core.async :refer [<! <!! >! >!! put! chan go go-loop]]
-            [aleph.http :as aleph]
-            [taoensso.encore :refer [have have?]]
-            [taoensso.timbre :refer [tracef debugf infof warnf errorf]]
-            [taoensso.sente.server-adapters.aleph :refer [get-sch-adapter]]
-            [taoensso.sente.packers.transit :as sente-transit]
-            [taoensso.sente :as sente]
-            [repl.repl.band.socket-repl :as repl]
-            [repl.repl.band.completion :as completion]
-            [repl.repl.user :as repl-user])
+  (:require
+    [aleph.http :as aleph]
+    [aleph.netty :as netty]
+    [compojure.core :refer [defroutes GET POST]]
+    [compojure.route :as route]
+    [ring.middleware.defaults]
+    [taoensso.sente :as sente]
+    [taoensso.sente.packers.transit :as sente-transit]
+    [taoensso.sente.server-adapters.aleph :refer [get-sch-adapter]]
+    [taoensso.timbre :refer [debugf infof]]
+
+    [repl.repl.band.completion :as completion]
+    [repl.repl.band.socket-repl :as repl]
+    [repl.repl.user :as repl-user])
 
   (:import (java.util UUID)
            (clojure.lang DynamicClassLoader)
@@ -156,12 +156,7 @@
   (swap! socket-connections register-socket client-id))
 
 (defmethod ^:private -event-msg-handler :chsk/uidport-close
-  [{:keys [client-id]}]
-  ;(println :uidport-close client-id)
-  #_(let [{::repl-user/keys [name]}
-          (repl-user/get-user-by-uid client-id @connected-users)]
-      (swap! connected-users #(repl-user/<-user name %)))
-  )
+  [_])
 
 (defmethod ^:private -event-msg-handler :chsk/ws-ping
   [{:keys [client-id]}]
@@ -222,7 +217,7 @@
         [port stop-fn] (let [server (aleph/start-server ring-handler {:port port})
                              p      (promise)]
                          (future @p)                        ; Workaround for Ref. https://goo.gl/kLvced
-                         [(aleph.netty/port server)
+                         [(netty/port server)
                           (fn []
                             (.close ^Closeable server)
                             (deliver p nil))])
@@ -243,11 +238,11 @@
 
 ;; TODO have a default port
 (defn start-reptile-server
-  [reptile-port reptile-secret]
-  (reset! shared-secret reptile-secret)
-  (let [port (Integer/parseInt reptile-port)]
+  [port secret]
+  (reset! shared-secret secret)
+  (let [port           (Integer/parseInt port)
+        current-thread (Thread/currentThread)
+        classloader    (.getContextClassLoader current-thread)]
     ; Need DynamicClassLoader to support add-lib
-    (let [current-thread (Thread/currentThread)
-          cl             (.getContextClassLoader current-thread)]
-      (.setContextClassLoader current-thread (DynamicClassLoader. cl))
-      (start! port))))
+    (.setContextClassLoader current-thread (DynamicClassLoader. classloader))
+    (start! port)))
