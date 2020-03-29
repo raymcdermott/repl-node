@@ -12,7 +12,8 @@
             [taoensso.sente :as sente]
             [repl.repl.band.socket-repl :as repl]
             [repl.repl.band.completion :as completion]
-            [clojure.spec.alpha :as s])
+            [repl.repl.user :as repl-user])
+
   (:import (java.util UUID)
            (clojure.lang DynamicClassLoader)
            (java.io Closeable)))
@@ -34,7 +35,8 @@
       packer      (sente-transit/get-transit-packer)
       chsk-server (sente/make-channel-socket-server!
                     (get-sch-adapter)
-                    {:packer packer :user-id-fn ws-uid-fn})
+                    {:packer     packer
+                     :user-id-fn ws-uid-fn})
       {:keys [ch-recv send-fn connected-uids ajax-post-fn ajax-get-or-ws-handshake-fn]} chsk-server]
 
   (def ^:private ring-ajax-post ajax-post-fn)
@@ -57,16 +59,19 @@
 (defonce ^:private broadcast-enabled?_ (atom true))
 
 ;;;; Sente event handlers
+; Dispatch on event-id
 (defmulti ^:private -event-msg-handler
           "Multimethod to handle Sente `event-msg`s"
-          :id)                                              ; Dispatch on event-id
+          :id)
 
+; Handle event-msgs on a single thread
 (defn- event-msg-handler
   "Wraps `-event-msg-handler` with logging, error catching, etc."
   [ev-msg]
-  (-event-msg-handler ev-msg))                              ; Handle event-msgs on a single thread
+  (-event-msg-handler ev-msg))
 
-(defmethod ^:private -event-msg-handler :default            ; Default/fallback case (no other matching handler)
+; Default/fallback case (no other matching handler)
+(defmethod ^:private -event-msg-handler :default
   [{:keys [event ?reply-fn]}]
   (debugf "Unhandled event: %s" event)
   (when ?reply-fn
@@ -77,31 +82,25 @@
   (let [loop-enabled? (swap! broadcast-enabled?_ not)]
     (?reply-fn loop-enabled?)))
 
-;;;;;;;;;;; LOGIN
-
-(s/def ::client-id string?)
-
-(s/def ::connected-user
-  (s/keys :req [::client-id]))
-
-(s/def ::user
-  (s/merge ::connected-user
-           (s/keys :req [::user-name ::uid])))
-
-(s/def ::users
-  (s/coll-of ::user :kind :map))
-
+;;;; LOGIN
 
 ;; Sente uses Ring by default but we use WS to track users
-(defonce ^:private connected-users (atom []))
+(defonce ^:private connected-users (atom {}))
 (defonce ^:private node-prepl (atom nil))
 
 (defn >send
   "Send `msg` to each member"
   [msg]
-  (doall (map (fn [user]
-                (println :user user :msg msg)
-                (chsk-send! (::uid user) msg)) @connected-users)))
+  (let [uids (repl-user/get-uids @connected-users)]
+    (doall (map #(chsk-send! % msg) uids))))
+
+;; Note: CLIENT-ID = UID
+
+;; Debug
+(add-watch connected-uids :connected-uids
+           (fn [_ _ old new]
+             (when (not= old new)
+               (println :connected-uids new))))
 
 ;; Debug
 (add-watch connected-users :connected-users
@@ -112,15 +111,17 @@
 (defonce ^:private socket-connections (atom {}))
 
 ;; REPL
-(defmethod ^:private -event-msg-handler :reptile/keystrokes
+(defmethod ^:private -event-msg-handler :repl-repl/keystrokes
   ;; Send the keystrokes to the team
   [{:keys [?data]}]
   (let [{:keys [form prefixed-form to-complete user-name]} ?data
         completions (completion/code-completions to-complete prefixed-form)
-        shared-data {:form form :user user-name :completions completions}]
-    (>send [:reptile/keystrokes shared-data])))
+        shared-data {:form        form
+                     :user        user-name
+                     :completions completions}]
+    (>send [:repl-repl/keystrokes shared-data])))
 
-(defmethod ^:private -event-msg-handler :reptile/repl
+(defmethod ^:private -event-msg-handler :repl-repl/repl
   [{:keys [?data]}]
   (if-not @node-prepl                                       ;; Create on first use
     (reset! node-prepl (repl/shared-prepl)))
@@ -128,18 +129,21 @@
   (let [input-form (:form ?data)
         result     {:prepl-response (repl/shared-eval @node-prepl input-form)}
         response   (merge ?data result)]
-    (>send [:reptile/eval response])))
+    (>send [:repl-repl/eval response])))
 
 (defn- register-socket [state client-id]
-  (let [kw-client (keyword client-id)]
-    (assoc state kw-client {})))
+  (assoc state (keyword client-id) {}))
 
-(defn- register-user [user uid]
-  (swap! connected-users {::user-name user ::uid uid})
-  (>send [:reptile/editors @connected-users]))
+;; TODO: Replace existing user name records
+;; TODO: Bring back the team
 
-(defn- deregister-user [client-id]
-  (swap! @connected-users dissoc client-id))
+(defn- register-user [login-user]
+  (swap! connected-users #(repl-user/+user % login-user))
+  (>send [:repl-repl/editors @connected-users]))
+
+(defn- deregister-user [username]
+  (println :deregister-user :username username :list @connected-users)
+  (swap! connected-users #(repl-user/<-user username %)))
 
 ; the dropping thing needs to be re-thought, maybe via core.async timeouts
 (defn- register-socket-ping [state client-id]
@@ -148,11 +152,16 @@
 
 (defmethod ^:private -event-msg-handler :chsk/uidport-open
   [{:keys [client-id]}]
+  ;(println :uidport-open client-id)
   (swap! socket-connections register-socket client-id))
 
 (defmethod ^:private -event-msg-handler :chsk/uidport-close
   [{:keys [client-id]}]
-  (swap! connected-users deregister-user client-id))
+  ;(println :uidport-close client-id)
+  #_(let [{::repl-user/keys [name]}
+          (repl-user/get-user-by-uid client-id @connected-users)]
+      (swap! connected-users #(repl-user/<-user name %)))
+  )
 
 (defmethod ^:private -event-msg-handler :chsk/ws-ping
   [{:keys [client-id]}]
@@ -161,24 +170,30 @@
 
 (defonce ^:private shared-secret (atom nil))
 
-(defn- logout [{:keys [client-id _]}]
-  (deregister-user client-id))
+(defn- logout [{:keys [?data]}]
+  (deregister-user ?data))
 
 (defn- login [{:keys [?data ?reply-fn]}]
-  (let [{:keys [user network-user-id secret]} ?data]
-    (if (= secret shared-secret)
-      (do (register-user user network-user-id)
-          (?reply-fn :login-ok))
-      (?reply-fn :login-failed))))
+  (println :login :data ?data)
+  ;; TODO what are the barriers?
+  (if (= (::repl-user/name ?data) "ray")
+    (do (register-user ?data)
+        (?reply-fn :login-ok))
+    (?reply-fn :login-failed)))
 
-(defmethod ^:private -event-msg-handler :reptile/login
+(defmethod ^:private -event-msg-handler :repl-repl/login
   [ev-msg]
   (login ev-msg))
 
-;; TODO check contents of the message
-(defmethod ^:private -event-msg-handler :reptile/logout
+(defmethod ^:private -event-msg-handler :repl-repl/logout
   [ev-msg]
   (logout ev-msg))
+
+;; TODO drop the team name messages (that's for the team node)
+(defmethod ^:private -event-msg-handler :repl-repl/team-random-data
+  [{:keys [?reply-fn]}]
+  (println :team-random-data)
+  (?reply-fn {:team-name "apropos" :team-secret @shared-secret}))
 
 ;;;; Sente event router (our `event-msg-handler` loop)
 
@@ -189,7 +204,8 @@
 
 (defn- start-router! []
   (stop-router!)
-  (reset! router_ (sente/start-server-chsk-router! ch-chsk event-msg-handler)))
+  (reset! router_ (sente/start-server-chsk-router!
+                    ch-chsk event-msg-handler)))
 
 ;;;; Init stuff
 

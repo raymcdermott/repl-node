@@ -27,8 +27,6 @@
 (defmethod -event-msg-handler :chsk/state
   [{:keys [?data]}]
   (let [[_ new-state-map] (have vector? ?data)]
-    ; TODO Fix up
-    ;(re-frame/dispatch [:repl.tongue.events/network-status (:open? new-state-map)])
     (if (:first-open? new-state-map)
       (println "Channel socket successfully established!: %s" new-state-map)
       (println "Channel socket state change: %s" new-state-map))))
@@ -96,6 +94,3 @@
 
     ;; Now we have all of this set up we can start the router
     (start-router!)))
-
-(defn x [y]
-  (def a 123))
