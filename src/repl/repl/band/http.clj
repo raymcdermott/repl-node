@@ -35,8 +35,10 @@
       packer      (sente-transit/get-transit-packer)
       chsk-server (sente/make-channel-socket-server!
                     (get-sch-adapter)
-                    {:packer     packer
-                     :user-id-fn ws-uid-fn})
+                    ;; prefer CORS & Strict cookies
+                    {:csrf-token-fn (fn [_] true)
+                     :packer        packer
+                     :user-id-fn    ws-uid-fn})
       {:keys [ch-recv send-fn connected-uids ajax-post-fn ajax-get-or-ws-handshake-fn]} chsk-server]
 
   (def ^:private ring-ajax-post ajax-post-fn)
@@ -121,8 +123,10 @@
                      :completions completions}]
     (>send [:repl-repl/keystrokes shared-data])))
 
-(defmethod ^:private -event-msg-handler :repl-repl/repl
+(defmethod ^:private -event-msg-handler :repl-repl/eval
   [{:keys [?data]}]
+  (println :eval :data ?data)
+
   (if-not @node-prepl                                       ;; Create on first use
     (reset! node-prepl (repl/shared-prepl)))
 
@@ -142,7 +146,6 @@
   (>send [:repl-repl/editors @connected-users]))
 
 (defn- deregister-user [username]
-  (println :deregister-user :username username :list @connected-users)
   (swap! connected-users #(repl-user/<-user username %)))
 
 ; the dropping thing needs to be re-thought, maybe via core.async timeouts
@@ -152,7 +155,6 @@
 
 (defmethod ^:private -event-msg-handler :chsk/uidport-open
   [{:keys [client-id]}]
-  ;(println :uidport-open client-id)
   (swap! socket-connections register-socket client-id))
 
 (defmethod ^:private -event-msg-handler :chsk/uidport-close
@@ -169,7 +171,6 @@
   (deregister-user ?data))
 
 (defn- login [{:keys [?data ?reply-fn]}]
-  (println :login :data ?data)
   ;; TODO what are the barriers?
   (if (= (::repl-user/name ?data) "ray")
     (do (register-user ?data)
