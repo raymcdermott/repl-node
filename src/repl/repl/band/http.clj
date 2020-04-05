@@ -88,7 +88,7 @@
 
 ;; Sente uses Ring by default but we use WS to track users
 (defonce ^:private connected-users (atom {}))
-(defonce ^:private node-prepl (atom nil))
+(defonce ^:private node-prepl (atom (repl/shared-prepl)))
 
 (defn >send
   "Send `msg` to each member"
@@ -123,11 +123,13 @@
                      :completions completions}]
     (>send [:repl-repl/keystrokes shared-data])))
 
+;; TODO also have the user name of the eval request
+;; makes it easier to show who did what
 (defmethod ^:private -event-msg-handler :repl-repl/eval
   [{:keys [?data]}]
   (println :eval :data ?data)
 
-  (if-not @node-prepl                                       ;; Create on first use
+  (when-not @node-prepl                                       ;; Create on first use
     (reset! node-prepl (repl/shared-prepl)))
 
   (let [input-form (:form ?data)
@@ -139,14 +141,15 @@
   (assoc state (keyword client-id) {}))
 
 ;; TODO: Replace existing user name records
-;; TODO: Bring back the team
+;; TODO: Bring back the notion of a team to
+;; act as a barrier to entry
 
 (defn- register-user [login-user]
   (swap! connected-users #(repl-user/+user % login-user))
-  (>send [:repl-repl/editors @connected-users]))
+  (>send [:repl-repl/users @connected-users]))
 
-(defn- deregister-user [username]
-  (swap! connected-users #(repl-user/<-user username %)))
+(defn- deregister-user [user]
+  (swap! connected-users #(repl-user/<-user (::repl-user/name user) %)))
 
 ; the dropping thing needs to be re-thought, maybe via core.async timeouts
 (defn- register-socket-ping [state client-id]
@@ -170,11 +173,10 @@
 (defn- logout [{:keys [?data]}]
   (deregister-user ?data))
 
+;; TODO what are the barriers?
 (defn- login [{:keys [?data ?reply-fn]}]
-  ;; TODO what are the barriers?
-  (if (= (::repl-user/name ?data) "ray")
-    (do (register-user ?data)
-        (?reply-fn :login-ok))
+  (if (register-user ?data)
+    (?reply-fn :login-ok)
     (?reply-fn :login-failed)))
 
 (defmethod ^:private -event-msg-handler :repl-repl/login
