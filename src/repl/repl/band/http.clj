@@ -149,7 +149,9 @@
   (>send [:repl-repl/users @connected-users]))
 
 (defn- deregister-user [user]
-  (swap! connected-users #(repl-user/<-user (::repl-user/name user) %)))
+  (swap! connected-users
+         #(repl-user/<-user (::repl-user/name user) %))
+  (>send [:repl-repl/users @connected-users]))
 
 ; the dropping thing needs to be re-thought, maybe via core.async timeouts
 (defn- register-socket-ping [state client-id]
