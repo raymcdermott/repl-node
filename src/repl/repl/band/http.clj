@@ -10,9 +10,9 @@
     [taoensso.sente.server-adapters.aleph :refer [get-sch-adapter]]
     [taoensso.timbre :refer [debugf infof]]
 
-    [repl.repl.band.completion :as completion]
     [repl.repl.band.socket-repl :as repl]
-    [repl.repl.user :as repl-user])
+    [repl.repl.user :as user-specs]
+    [repl.repl.messages :as message-specs])
 
   (:import (java.util UUID)
            (clojure.lang DynamicClassLoader)
@@ -93,7 +93,7 @@
 (defn >send
   "Send `msg` to each member"
   [msg]
-  (let [uids (repl-user/get-uids @connected-users)]
+  (let [uids (user-specs/get-uids @connected-users)]
     (doall (map #(chsk-send! % msg) uids))))
 
 ;; Note: CLIENT-ID = UID
@@ -116,12 +116,7 @@
 (defmethod ^:private -event-msg-handler :repl-repl/keystrokes
   ;; Send the keystrokes to the team
   [{:keys [?data]}]
-  (let [{:keys [form prefixed-form to-complete user-name]} ?data
-        completions (completion/code-completions to-complete prefixed-form)
-        shared-data {:form        form
-                     :user        user-name
-                     :completions completions}]
-    (>send [:repl-repl/keystrokes shared-data])))
+  (>send [:repl-repl/keystrokes ?data]))
 
 ;; TODO also have the user name of the eval request
 ;; makes it easier to show who did what
@@ -145,12 +140,11 @@
 ;; act as a barrier to entry
 
 (defn- register-user [login-user]
-  (swap! connected-users #(repl-user/+user % login-user))
+  (swap! connected-users #(user-specs/+user % login-user))
   (>send [:repl-repl/users @connected-users]))
 
 (defn- deregister-user [user]
-  (swap! connected-users
-         #(repl-user/<-user (::repl-user/name user) %))
+  (swap! connected-users #(user-specs/<-user (::user-specs/name user) %))
   (>send [:repl-repl/users @connected-users]))
 
 ; the dropping thing needs to be re-thought, maybe via core.async timeouts
