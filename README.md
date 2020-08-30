@@ -52,6 +52,8 @@ The first version will be considered feature complete once the server provides
 - [ ] Custom LinuxKit OS image
 - [X] Authentication using shared secret
 
+### Heroku Deployment
+
 
   
 ## Planned features
