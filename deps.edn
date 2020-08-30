@@ -1,10 +1,10 @@
 {:deps
- {org.clojure/clojure       {:mvn/version "1.10.1"}
+ {org.clojure/clojure       {:mvn/version "1.10.2-alpha1"}
   org.clojure/core.async    {:mvn/version "0.4.474"}
   org.clojure/tools.logging {:mvn/version "0.4.0"}
   org.clojure/test.check    {:mvn/version "0.10.0"}
   compliment                {:mvn/version "0.3.6"}
-  aleph                     {:mvn/version "0.4.4"}
+  aleph                     {:mvn/version "0.4.6"}
   gloss                     {:mvn/version "0.2.6"}
   compojure                 {:mvn/version "1.6.0"}
   com.taoensso/sente        {:mvn/version "1.13.1"}
@@ -13,24 +13,28 @@
   ring/ring-defaults        {:mvn/version "0.3.1"}
   com.cognitect/transit-clj {:mvn/version "1.0.324"}
 
-  repl-repl/specs           {:local/root "../repl-specs"}}
+  repl-repl/specs           {:git/url "https://github.com/raymcdermott/repl-specs.git"
+                             :sha     "f2fca99e65c9f126cdd8108948e934dc3384928b"}}
 
  :aliases
- {:test        {:extra-paths ["test"]
-                :extra-deps  {com.cognitect/test-runner
-                              {:git/url "https://github.com/cognitect-labs/test-runner.git"
-                               :sha     "209b64504cb3bd3b99ecfec7937b358a879f55c1"}}
-                :main-opts   ["-m" "cognitect.test-runner"]}
+ {:test         {:extra-paths ["test"]
+                 :extra-deps  {com.cognitect/test-runner
+                               {:git/url "https://github.com/cognitect-labs/test-runner.git"
+                                :sha     "209b64504cb3bd3b99ecfec7937b358a879f55c1"}}
+                 :main-opts   ["-m" "cognitect.test-runner"]}
 
-  :clj-kondo   {:extra-deps {clj-kondo {:mvn/version "RELEASE"}}
-                :main-opts  ["-m" "clj-kondo.main"]}
+  :native-image {:extra-deps {borkdude/clj-reflector-graal-java11-fix
+                              {:mvn/version "0.0.1-graalvm-20.2.0"
+                               :exclusions  [org.graalvm.nativeimage/svm]}}}
 
-  :repl        {:main-opts ["-r"]}
+  :clj-kondo    {:extra-deps {clj-kondo {:mvn/version "RELEASE"}}
+                 :main-opts  ["-m" "clj-kondo.main"]}
 
-  :server-repl {:extra-paths ["dev"]
-                :extra-deps  {clojure-watch {:mvn/version "0.1.14"}}
-                :main-opts   ["-i" "@repl/repl/band/opener.clj" "-r"]}}}
+  :repl         {:main-opts ["-r"]}
 
+  :server-repl  {:extra-paths ["dev"]
+                 :extra-deps  {clojure-watch {:mvn/version "0.1.14"}}
+                 :main-opts   ["-i" "@repl/repl/band/opener.clj" "-r"]}
 
-
+  :heroku       {:main-opts ["-m" "repl.repl.band.http"]}}}
 

@@ -7,6 +7,8 @@
     (java.io OutputStreamWriter StringReader PushbackReader)
     (clojure.lang LineNumberingPushbackReader DynamicClassLoader)))
 
+(set! *warn-on-reflection* true)
+
 (defn send-code
   [code-writer clj-code]
   (binding [*out*              code-writer

@@ -4,19 +4,18 @@
     [aleph.netty :as netty]
     [compojure.core :refer [defroutes GET POST]]
     [compojure.route :as route]
+    [repl.repl.band.socket-repl :as repl]
+    [repl.repl.user :as user-specs]
     [ring.middleware.defaults]
     [taoensso.sente :as sente]
     [taoensso.sente.packers.transit :as sente-transit]
     [taoensso.sente.server-adapters.aleph :refer [get-sch-adapter]]
-    [taoensso.timbre :refer [debugf infof]]
-
-    [repl.repl.band.socket-repl :as repl]
-    [repl.repl.user :as user-specs]
-    [repl.repl.messages :as message-specs])
-
+    [taoensso.timbre :refer [debugf infof]])
   (:import (java.util UUID)
            (clojure.lang DynamicClassLoader)
            (java.io Closeable)))
+
+(set! *warn-on-reflection* true)
 
 ; TODO: move to a mesg per client model (not broadcast on uid)
 ; TODO: then kill clients that don't ack
@@ -245,3 +244,7 @@
     ; Need DynamicClassLoader to support add-lib
     (.setContextClassLoader current-thread (DynamicClassLoader. classloader))
     (start! port)))
+
+(defn -main [& args]
+  (let [port (or (System/getenv "PORT") "56665")]
+    (start-reptile-server port "Apropos soporpA Apropos soporpA")))

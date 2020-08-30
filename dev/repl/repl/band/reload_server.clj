@@ -27,7 +27,6 @@
       :callback    (fn [_ filename]
                      (when-not (.isDirectory (io/file filename))
                        (http/stop!)
-                       (load-file (absolute-path (str path "/repl/repl/band/completion.clj")))
                        (load-file (absolute-path (str path "/repl/repl/band/socket_repl.clj")))
                        (load-file (absolute-path (str path "/repl/repl/band/http.clj")))
                        (start-server port secret)))
