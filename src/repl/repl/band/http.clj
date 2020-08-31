@@ -170,6 +170,7 @@
 
 ;; TODO what are the barriers?
 (defn- login [{:keys [?data ?reply-fn]}]
+  ;; check team secret here
   (if (register-user ?data)
     (?reply-fn :login-ok)
     (?reply-fn :login-failed)))
