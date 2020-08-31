@@ -245,6 +245,7 @@
     (.setContextClassLoader current-thread (DynamicClassLoader. classloader))
     (start! port)))
 
-(defn -main [& args]
-  (let [port (or (System/getenv "PORT") "56665")]
-    (start-reptile-server port "Apropos soporpA Apropos soporpA")))
+(defn -main [& _args]
+  (let [port (or (System/getenv "PORT") "56665")
+        secret (or (System/getenv "TEAM_SECRET") "Apropos soporpA Apropos soporpA")]
+    (start-reptile-server port secret)))
