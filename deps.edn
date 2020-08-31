@@ -13,24 +13,26 @@
   ring/ring-defaults        {:mvn/version "0.3.1"}
   com.cognitect/transit-clj {:mvn/version "1.0.324"}
 
+  clj-deps                  {:mvn/version "RELEASE"}
+
   repl-repl/specs           {:git/url "https://github.com/raymcdermott/repl-specs.git"
                              :sha     "f2fca99e65c9f126cdd8108948e934dc3384928b"}}
 
  :aliases
- {:test         {:extra-paths ["test"]
-                 :extra-deps  {com.cognitect/test-runner
-                               {:git/url "https://github.com/cognitect-labs/test-runner.git"
-                                :sha     "209b64504cb3bd3b99ecfec7937b358a879f55c1"}}
-                 :main-opts   ["-m" "cognitect.test-runner"]}
+ {:test        {:extra-paths ["test"]
+                :extra-deps  {com.cognitect/test-runner
+                              {:git/url "https://github.com/cognitect-labs/test-runner.git"
+                               :sha     "209b64504cb3bd3b99ecfec7937b358a879f55c1"}}
+                :main-opts   ["-m" "cognitect.test-runner"]}
 
-  :clj-kondo    {:extra-deps {clj-kondo {:mvn/version "RELEASE"}}
-                 :main-opts  ["-m" "clj-kondo.main"]}
+  :clj-kondo   {:extra-deps {clj-kondo {:mvn/version "RELEASE"}}
+                :main-opts  ["-m" "clj-kondo.main"]}
 
-  :repl         {:main-opts ["-r"]}
+  :repl        {:main-opts ["-r"]}
 
-  :server-repl  {:extra-paths ["dev"]
-                 :extra-deps  {clojure-watch {:mvn/version "0.1.14"}}
-                 :main-opts   ["-i" "@repl/repl/band/opener.clj" "-r"]}
+  :server-repl {:extra-paths ["dev"]
+                :extra-deps  {clojure-watch {:mvn/version "0.1.14"}}
+                :main-opts   ["-i" "@repl/repl/band/opener.clj" "-r"]}
 
-  :heroku       {:main-opts ["-m" "repl.repl.band.http"]}}}
+  :heroku      {:main-opts ["-m" "repl.repl.band.http"]}}}
 

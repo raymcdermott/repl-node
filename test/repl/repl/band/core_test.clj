@@ -4,13 +4,17 @@
     [clojure.test :refer :all]
     [clojure.string :as str]
     [repl.repl.band.http :refer :all]
-    [repl.repl.band.socket-repl :as repl]))
+    [repl.repl.band.socket-repl :as repl])
+  (:import (clojure.lang DynamicClassLoader)))
 
 ; use this as a fixture for each test?
 (defn- evaller [& {:keys [comp-first?]
-                  :or   {comp-first? false}}]
-  (let [prepl       (repl/shared-prepl {:server-daemon true})
-        shared-eval (partial repl/shared-eval prepl)]
+                   :or   {comp-first? false}}]
+  (let [current-thread (Thread/currentThread)
+        cl             (.getContextClassLoader current-thread)
+        prepl          (repl/shared-prepl {:server-daemon true})
+        shared-eval    (partial repl/shared-eval prepl)]
+    (.setContextClassLoader current-thread (DynamicClassLoader. cl))
     (if comp-first? (comp first shared-eval) shared-eval)))
 
 (deftest ^:basic-prepl-tests basic-prepl-tests
@@ -104,7 +108,7 @@
       (let [_ (shared-eval "(def x 1)")
             _ (shared-eval "(def lst '(a b c))")
             {:keys [val]} (shared-eval "`(fred x ~x lst ~@lst 7 8 :nine)")]
-        (is (= "(repl.repl.band.core-test/fred repl.repl.band.core-test/x 1 repl.repl.band.core-test/lst a b c 7 8 :nine)" val)))
+        (is (= "(user/fred user/x 1 user/lst a b c 7 8 :nine)" val)))
 
       (let [{:keys [val]} (shared-eval "#{1}")]
         (is (= "#{1}" val)))
@@ -153,8 +157,8 @@
   (testing "Test spec / add-lib"
     (let [shared-eval (evaller)]
 
-      (let [add-ok (shared-eval "(use 'clojure.tools.deps.alpha.repl)
-                                 (add-lib 'org.clojure/test.check {:mvn/version \"0.9.0\"})")]
+      (let [add-ok (shared-eval "(use 'clj-deps.core)
+                                 (add-lib 'org.clojure/test.check {:mvn/version \"1.1.0\"})")]
         (is (nil? (read-string (:val (first add-ok)))))
         (is (boolean? (read-string (:val (last add-ok))))))
 
@@ -221,13 +225,13 @@
         (is (= "34" val)))
 
       (let [{:keys [val tag]} (shared-eval "(in-ns 'repl-test)")]
-          (is (= :ret tag))
-          (is (str/ends-with? val "\"repl-test\"]"))
-          (is (str/starts-with? val "#object"))
+        (is (= :ret tag))
+        (is (str/ends-with? val "\"repl-test\"]"))
+        (is (str/starts-with? val "#object"))
 
-          (let [{:keys [val tag]} (shared-eval "(in-ns 'user)")]
-            (is (= :ret tag))
-            (is (str/ends-with? val "\"user\"]"))
-            (is (str/starts-with? val "#object")))))))
+        (let [{:keys [val tag]} (shared-eval "(in-ns 'user)")]
+          (is (= :ret tag))
+          (is (str/ends-with? val "\"user\"]"))
+          (is (str/starts-with? val "#object")))))))
 
 
