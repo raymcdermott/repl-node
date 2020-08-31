@@ -23,10 +23,6 @@
                                 :sha     "209b64504cb3bd3b99ecfec7937b358a879f55c1"}}
                  :main-opts   ["-m" "cognitect.test-runner"]}
 
-  :native-image {:extra-deps {borkdude/clj-reflector-graal-java11-fix
-                              {:mvn/version "0.0.1-graalvm-20.2.0"
-                               :exclusions  [org.graalvm.nativeimage/svm]}}}
-
   :clj-kondo    {:extra-deps {clj-kondo {:mvn/version "RELEASE"}}
                  :main-opts  ["-m" "clj-kondo.main"]}
 
