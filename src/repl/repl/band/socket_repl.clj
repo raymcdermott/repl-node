@@ -46,33 +46,47 @@
       {:tag        :err :form form :ms 0 :ns "user" :val (pr-str e)
        :err-source :process-form})))
 
+(def specials {'apropos  `clj-repl/apropos
+               'dir      `clj-repl/dir
+               'doc      `clj-repl/doc
+               'find-doc `clj-repl/find-doc
+               'source   `clj-repl/source})
+
+(defn repl-special?
+  [token]
+  ((set (keys specials)) token))
+
+(defn repl-special
+  [f token]
+  (let [repl-fn (get specials f)]
+    (if (= 'apropos f)
+      (eval `(~repl-fn ~token))
+      (with-out-str (eval `(~repl-fn ~token))))))
+
 (defn read-forms
   "Read the string in the REPL buffer to obtain all forms (rather than just the first)"
-  [repl-forms]
+  [input-string]
   (try
-    (let [pbr         (PushbackReader. (StringReader. repl-forms))
+    (let [pbr         (PushbackReader. (StringReader. input-string))
           sentinel    ::eof
           reader-opts {:eof sentinel :default default-reptile-tag-reader}
           form-reader (partial read reader-opts pbr)]
       (loop [data-read (form-reader)
              result    []]
         (if (= data-read sentinel)
+          (or (seq result)
+              {:tag :ret :form input-string :ms 0 :ns "user" :val ""})
           (cond
-            (empty? result) {:tag :ret :form repl-forms :ms 0 :ns "user" :val repl-forms}
-            :else result)
-          (if (= 'doc (first data-read))
-            (let [doc-x (last data-read)
-                  resolved-x (resolve doc-x)
-                  x-meta (meta resolved-x)
-                  doc (if x-meta (str "\n" (symbol resolved-x) "\n" (:arglists x-meta) "\n" (:doc x-meta))
-                                 (str "Cannot resolve " doc-x))]
-              {:tag :ret :form repl-forms :ms 0 :ns "user" :val doc})
+            (and (coll? data-read) (= 2 (count data-read)) (repl-special? (first data-read)))
+            (let [[f token] data-read]
+              {:tag :ret :form input-string :ms 0 :ns "user" :val (repl-special f token)})
+            :else
             (recur (form-reader)
                    (conj result data-read))))))
     (catch Exception e
       (let [msg-data   (ex-data e)
             msg-string (.getMessage e)]
-        {:tag :err :form repl-forms :ms 0 :ns "user" :ex-data (map? msg-data)
+        {:tag :err :form input-string :ms 0 :ns "user" :ex-data (map? msg-data)
          :val (if msg-data (pr-str msg-data) msg-string) :err-source :read-forms}))))
 
 (defn shared-eval

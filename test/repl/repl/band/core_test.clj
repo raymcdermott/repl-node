@@ -120,8 +120,9 @@
   (testing "Various comment styles"
     (let [shared-eval (evaller :comp-first? true)]
 
+      ;; bad tests!!! comments should pass through
       (let [{:keys [tag val form]} (shared-eval "; 42")]
-        (is (= tag :err))
+        (is (= tag :ret))
         (is (= form "; 42"))
         (let [{:keys [type ex-kind]} (read-string val)]
           (is (= :reader-exception type))
@@ -131,6 +132,7 @@
         (is (= :ret tag))
         (is (nil? (read-string val))))
 
+      ;; bad tests!!! comments should pass through
       (let [{:keys [tag val form]} (shared-eval "#_ xx")]
         (is (= :err tag))
         (is (= form "#_ xx"))
@@ -211,25 +213,43 @@
   (testing "Testing the support and use of namespaces"
     (let [shared-eval (evaller :comp-first? true)]
 
-      ; Functions
-      (let [{:keys [val tag]} (shared-eval "(defn ns-x2 [x] (+ x x))")]
-        (is (= :ret tag))
-        (is (= val "#'user/ns-x2")))
-
-      (let [{:keys [val tag]} (shared-eval "(in-ns 'user)")]
+      ; NS properties
+      (let [{:keys [val ns tag]} (shared-eval "*ns*")]
+        (is (= ns "user"))
         (is (= :ret tag))
         (is (str/ends-with? val "\"user\"]"))
         (is (str/starts-with? val "#object")))
 
+      ; creating / switching ns
+      (let [_ (shared-eval "(ns test123)")
+            {:keys [val ns tag]} (shared-eval "*ns*")]
+        (is (= ns "test123"))
+        (is (= :ret tag))
+        (is (str/ends-with? val "\"test123\"]"))
+        (is (str/starts-with? val "#object"))
+        (let [{:keys [val ns tag]} (shared-eval "*ns*")]
+          (is (= ns "test123"))
+          (is (= :ret tag))
+          (is (str/ends-with? val "\"test123\"]"))
+          (is (str/starts-with? val "#object"))))
+
+      ; Functions
+      (let [_ (shared-eval "(in-ns 'user)")
+            {:keys [val tag]} (shared-eval "(defn ns-x2 [x] (+ x x))")]
+        (is (= :ret tag))
+        (is (= val "#'user/ns-x2")))
+
       (let [{:keys [val]} (shared-eval "(ns-x2 17)")]
         (is (= "34" val)))
 
-      (let [{:keys [val tag]} (shared-eval "(in-ns 'repl-test)")]
+      (let [{:keys [val tag ns]} (shared-eval "(in-ns 'repl-test)")]
+        (is (= ns "repl-test"))
         (is (= :ret tag))
         (is (str/ends-with? val "\"repl-test\"]"))
         (is (str/starts-with? val "#object"))
 
-        (let [{:keys [val tag]} (shared-eval "(in-ns 'user)")]
+        (let [{:keys [val tag ns]} (shared-eval "(in-ns 'user)")]
+          (is (= ns "user"))
           (is (= :ret tag))
           (is (str/ends-with? val "\"user\"]"))
           (is (str/starts-with? val "#object")))))))
