@@ -1,7 +1,8 @@
 (ns repl.repl.band.socket-repl
   (:require
     [clojure.java.io :as io]
-    [clojure.core.server :as clj-server])
+    [clojure.core.server :as clj-server]
+    [clojure.repl :as clj-repl])
   (:import
     (java.net Socket ServerSocket)
     (java.io OutputStreamWriter StringReader PushbackReader)
@@ -56,13 +57,18 @@
       (loop [data-read (form-reader)
              result    []]
         (if (= data-read sentinel)
-          (if (empty? result)
-            {:tag        :err :form repl-forms :ms 0 :ns "user" :ex-data true
-             :val        (pr-str {:type :reader-exception, :ex-kind :eof})
-             :err-source :read-forms}
-            result)
-          (recur (form-reader)
-                 (conj result data-read)))))
+          (cond
+            (empty? result) {:tag :ret :form repl-forms :ms 0 :ns "user" :val repl-forms}
+            :else result)
+          (if (= 'doc (first data-read))
+            (let [doc-x (last data-read)
+                  resolved-x (resolve doc-x)
+                  x-meta (meta resolved-x)
+                  doc (if x-meta (str "\n" (symbol resolved-x) "\n" (:arglists x-meta) "\n" (:doc x-meta))
+                                 (str "Cannot resolve " doc-x))]
+              {:tag :ret :form repl-forms :ms 0 :ns "user" :val doc})
+            (recur (form-reader)
+                   (conj result data-read))))))
     (catch Exception e
       (let [msg-data   (ex-data e)
             msg-string (.getMessage e)]
