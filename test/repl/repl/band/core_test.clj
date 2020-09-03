@@ -163,7 +163,7 @@
         (is (boolean? (read-string (:val (last add-ok))))))
 
       (let [spec-ok (shared-eval "(require '[clojure.spec.alpha :as s])
-                                  (s/valid? even? 10)")]
+                                  (s/valid? even? 42)")]
         (is (nil? (read-string (:val (first spec-ok)))))
         (is (true? (read-string (:val (last spec-ok))))))
 

@@ -2,17 +2,16 @@
  {org.clojure/clojure       {:mvn/version "1.10.2-alpha1"}
   org.clojure/core.async    {:mvn/version "0.4.474"}
   org.clojure/tools.logging {:mvn/version "0.4.0"}
-  org.clojure/test.check    {:mvn/version "0.10.0"}
-  clj-deps                  {:mvn/version "0.4.10"}
-  compliment                {:mvn/version "0.3.6"}
   aleph                     {:mvn/version "0.4.6"}
-  gloss                     {:mvn/version "0.2.6"}
-  compojure                 {:mvn/version "1.6.0"}
+  clj-deps                  {:mvn/version "0.4.10"}
+  com.cognitect/transit-clj {:mvn/version "1.0.324"}
   com.taoensso/sente        {:mvn/version "1.13.1"}
   com.taoensso/timbre       {:mvn/version "4.10.0"}
+  compliment                {:mvn/version "0.3.6"}
+  compojure                 {:mvn/version "1.6.0"}
+  gloss                     {:mvn/version "0.2.6"}
   ring                      {:mvn/version "1.6.3"}
   ring/ring-defaults        {:mvn/version "0.3.1"}
-  com.cognitect/transit-clj {:mvn/version "1.0.324"}
 
   repl-repl/specs           {:git/url "https://github.com/raymcdermott/repl-specs.git"
                              :sha     "f2fca99e65c9f126cdd8108948e934dc3384928b"}}
