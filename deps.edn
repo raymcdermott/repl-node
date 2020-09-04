@@ -2,6 +2,7 @@
  {org.clojure/clojure       {:mvn/version "1.10.2-alpha1"}
   org.clojure/core.async    {:mvn/version "0.4.474"}
   org.clojure/tools.logging {:mvn/version "0.4.0"}
+  org.slf4j/slf4j-simple    {:mvn/version "1.7.30"}
   aleph                     {:mvn/version "0.4.6"}
   clj-deps                  {:mvn/version "0.4.10"}
   com.cognitect/transit-clj {:mvn/version "1.0.324"}
