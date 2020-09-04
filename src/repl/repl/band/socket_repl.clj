@@ -25,12 +25,15 @@
   [{:keys [prepl-writer prepl-reader]} form]
   (try
 
+    (prn :eval-form form)
+
     (send-code prepl-writer form)
 
     (let [sentinel      ::eof
           reader-opts   {:eof sentinel :default default-reptile-tag-reader}
           prepl-read-fn (partial read reader-opts prepl-reader)]
       (loop [results [(prepl-read-fn)]]
+        (prn :eval-result results)
         (cond
           (= sentinel (last results))
           {:tag        :err :form form :ms 0 :ns "user" :val ""
@@ -57,7 +60,7 @@
       (loop [data-read (form-reader)
              result    []]
         (if (= data-read sentinel)
-          (or (seq result) {:tag :ret :form input-string :ms 0 :ns "user" :val ""})
+          (or (seq result) {:tag :ret :form input-string :ms 0 :ns "user" :val "nil"})
           (recur (form-reader)
                  (conj result data-read)))))
     (catch Exception e
@@ -69,6 +72,7 @@
 (defn shared-eval
   "Evaluate the form(s) provided in the string `forms-str` using the given `repl`"
   [repl forms-str]
+  (prn :shared-eval forms-str :repl repl)
   (let [expanded-forms (read-forms forms-str)]
     (if (map? expanded-forms)                               ; error map
       [expanded-forms]

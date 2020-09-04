@@ -17,39 +17,22 @@
     (.setContextClassLoader current-thread (DynamicClassLoader. cl))
     (if comp-first? (comp first shared-eval) shared-eval)))
 
-(deftest ^:basic-prepl-tests prepl-repl-tests
+(deftest ^:version-tests version-tests
+  (testing "That we are using 1.10 or later"
+    (let [shared-eval (evaller :comp-first? true)
+          {:keys [tag val]} (shared-eval "*clojure-version*")
+          {:keys [major minor]} (read-string val)]
+      (is (= :ret tag))
+      (is (= major 1))
+      (is (>= minor 10)))))
+
+(deftest ^:prepl-repl-tests prepl-repl-tests
   (testing "REPL options"
-    (let [shared-eval (evaller)
-          results     (shared-eval "(doc map)")
-          outs        (butlast results)
-          ret         (last results)]
-      (is (= 4 (count outs)))
-      (is (= (inc (count outs)) (count results)))
-      (is (clojure.string/starts-with? (-> outs first :val) "----"))
-      (map (fn [output] (let [{:keys [val tag]} output]
-                          (is (= :out tag))
-                          (is (string? val)))) outs)
-      (let [{:keys [tag val]} ret]
-        (is (= :ret tag))
-        (is (nil? (read-string val))))
-
-      (let [results (shared-eval "(dir clojure.set)")
+    (let [shared-eval (evaller)]
+      (let [results (shared-eval "(doc map)")
             outs    (butlast results)
             ret     (last results)]
-        (is (= 12 (count outs)))
-        (is (= (inc (count outs)) (count results)))
-        (is (clojure.string/starts-with? (-> outs first :val) "difference"))
-        (map (fn [output] (let [{:keys [val tag]} output]
-                            (is (= :out tag))
-                            (is (string? val)))) outs)
-        (let [{:keys [tag val]} ret]
-          (is (= :ret tag))
-          (is (nil? (read-string val)))))
-
-      (let [results (shared-eval "(find-doc #\"root.*cause\")")
-            outs    (butlast results)
-            ret     (last results)]
-        (is (>= (count outs) 20))
+        (is (= 4 (count outs)))
         (is (= (inc (count outs)) (count results)))
         (is (clojure.string/starts-with? (-> outs first :val) "----"))
         (map (fn [output] (let [{:keys [val tag]} output]
@@ -57,28 +40,54 @@
                             (is (string? val)))) outs)
         (let [{:keys [tag val]} ret]
           (is (= :ret tag))
-          (is (nil? (read-string val)))))
+          (is (nil? (read-string val))))
 
-      (let [results (shared-eval "(source max)")
-            outs    (butlast results)
-            ret     (last results)]
-        (is (= 1 (count outs)))
-        (is (= (inc (count outs)) (count results)))
-        (is (clojure.string/starts-with? (-> outs first :val) "(defn max"))
-        (map (fn [output] (let [{:keys [val tag]} output]
-                            (is (= :out tag))
-                            (is (string? val)))) outs)
-        (let [{:keys [tag val]} ret]
-          (is (= :ret tag))
-          (is (nil? (read-string val)))))
+        #_(let [results (shared-eval "(dir clojure.set)")
+              outs    (butlast results)
+              ret     (last results)]
+          (is (= 12 (count outs)))
+          (is (= (inc (count outs)) (count results)))
+          (is (clojure.string/starts-with? (-> outs first :val) "difference"))
+          (map (fn [output] (let [{:keys [val tag]} output]
+                              (is (= :out tag))
+                              (is (string? val)))) outs)
+          (let [{:keys [tag val]} ret]
+            (is (= :ret tag))
+            (is (nil? (read-string val)))))
 
-      (let [results (shared-eval "(apropos \"map\")")
-            ret     (first results)]
-        (let [{:keys [tag val]} ret
-              data (read-string val)]
-          (is (= :ret tag))
-          (is (seq? data))
-          (is (>= (count data) 20)))))))
+        #_(let [results (shared-eval "(find-doc #\"root.*cause\")")
+              outs    (butlast results)
+              ret     (last results)]
+          (is (>= (count outs) 20))
+          (is (= (inc (count outs)) (count results)))
+          (is (clojure.string/starts-with? (-> outs first :val) "----"))
+          (map (fn [output] (let [{:keys [val tag]} output]
+                              (is (= :out tag))
+                              (is (string? val)))) outs)
+          (let [{:keys [tag val]} ret]
+            (is (= :ret tag))
+            (is (nil? (read-string val)))))
+
+        #_(let [results (shared-eval "(source max)")
+              outs    (butlast results)
+              ret     (last results)]
+          (is (= 1 (count outs)))
+          (is (= (inc (count outs)) (count results)))
+          (is (clojure.string/starts-with? (-> outs first :val) "(defn max"))
+          (map (fn [output] (let [{:keys [val tag]} output]
+                              (is (= :out tag))
+                              (is (string? val)))) outs)
+          (let [{:keys [tag val]} ret]
+            (is (= :ret tag))
+            (is (nil? (read-string val)))))
+
+        #_(let [results (shared-eval "(apropos \"map\")")
+              ret     (first results)]
+          (let [{:keys [tag val]} ret
+                data (read-string val)]
+            (is (= :ret tag))
+            (is (seq? data))
+            (is (>= (count data) 20))))))))
 
 (deftest ^:basic-prepl-tests basic-prepl-tests
   (testing "Basic Clojure forms"
@@ -184,24 +193,23 @@
     (let [shared-eval (evaller :comp-first? true)]
 
       ;; bad tests!!! comments should pass through
-      (let [{:keys [tag val form]} (shared-eval "; 42")]
-        (is (= tag :ret))
-        (is (= form "; 42"))
-        (let [{:keys [type ex-kind]} (read-string val)]
-          (is (= :reader-exception type))
-          (is (= :eof ex-kind))))
-
-      (let [{:keys [tag val]} (shared-eval "(comment 42)")]
+      (let [input "; 42"
+            {:keys [tag val form]} (shared-eval input)]
         (is (= :ret tag))
+        (is (= form input))
         (is (nil? (read-string val))))
 
-      ;; bad tests!!! comments should pass through
-      (let [{:keys [tag val form]} (shared-eval "#_ xx")]
-        (is (= :err tag))
-        (is (= form "#_ xx"))
-        (let [{:keys [type ex-kind]} (read-string val)]
-          (is (= :reader-exception type))
-          (is (= :eof ex-kind)))))))
+      (let [input "(comment 42)"
+            {:keys [tag val form]} (shared-eval input)]
+        (is (= :ret tag))
+        (is (= form input))
+        (is (nil? (read-string val))))
+
+      (let [input "#_ xx"
+            {:keys [tag val form]} (shared-eval input)]
+        (is (= :ret tag))
+        (is (= form input))
+        (is (nil? (read-string val)))))))
 
 (deftest ^:multi-form-tests multi-form-tests
   (testing "Multiple forms in a buffer"
