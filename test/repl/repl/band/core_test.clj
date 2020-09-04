@@ -29,6 +29,8 @@
 (deftest ^:prepl-repl-tests prepl-repl-tests
   (testing "REPL options"
     (let [shared-eval (evaller)]
+      ;; Load default namespaces
+      (shared-eval "(use 'clojure.repl)")
       (let [results (shared-eval "(doc map)")
             outs    (butlast results)
             ret     (last results)]
@@ -42,7 +44,7 @@
           (is (= :ret tag))
           (is (nil? (read-string val))))
 
-        #_(let [results (shared-eval "(dir clojure.set)")
+        (let [results (shared-eval "(dir clojure.set)")
               outs    (butlast results)
               ret     (last results)]
           (is (= 12 (count outs)))
@@ -55,7 +57,7 @@
             (is (= :ret tag))
             (is (nil? (read-string val)))))
 
-        #_(let [results (shared-eval "(find-doc #\"root.*cause\")")
+        (let [results (shared-eval "(find-doc #\"root.*cause\")")
               outs    (butlast results)
               ret     (last results)]
           (is (>= (count outs) 20))
@@ -68,7 +70,7 @@
             (is (= :ret tag))
             (is (nil? (read-string val)))))
 
-        #_(let [results (shared-eval "(source max)")
+        (let [results (shared-eval "(source max)")
               outs    (butlast results)
               ret     (last results)]
           (is (= 1 (count outs)))
@@ -81,7 +83,7 @@
             (is (= :ret tag))
             (is (nil? (read-string val)))))
 
-        #_(let [results (shared-eval "(apropos \"map\")")
+        (let [results (shared-eval "(apropos \"map\")")
               ret     (first results)]
           (let [{:keys [tag val]} ret
                 data (read-string val)]

@@ -1,8 +1,7 @@
 (ns repl.repl.band.socket-repl
   (:require
     [clojure.java.io :as io]
-    [clojure.core.server :as clj-server]
-    [clojure.repl :as clj-repl])
+    [clojure.core.server :as clj-server])
   (:import
     (java.net Socket ServerSocket)
     (java.io OutputStreamWriter StringReader PushbackReader)
@@ -24,16 +23,12 @@
   "Evaluate `form` using the given `prepl` map"
   [{:keys [prepl-writer prepl-reader]} form]
   (try
-
-    (prn :eval-form form)
-
     (send-code prepl-writer form)
 
     (let [sentinel      ::eof
           reader-opts   {:eof sentinel :default default-reptile-tag-reader}
           prepl-read-fn (partial read reader-opts prepl-reader)]
       (loop [results [(prepl-read-fn)]]
-        (prn :eval-result results)
         (cond
           (= sentinel (last results))
           {:tag        :err :form form :ms 0 :ns "user" :val ""
@@ -72,7 +67,6 @@
 (defn shared-eval
   "Evaluate the form(s) provided in the string `forms-str` using the given `repl`"
   [repl forms-str]
-  (prn :shared-eval forms-str :repl repl)
   (let [expanded-forms (read-forms forms-str)]
     (if (map? expanded-forms)                               ; error map
       [expanded-forms]
