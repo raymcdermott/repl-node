@@ -17,6 +17,69 @@
     (.setContextClassLoader current-thread (DynamicClassLoader. cl))
     (if comp-first? (comp first shared-eval) shared-eval)))
 
+(deftest ^:basic-prepl-tests prepl-repl-tests
+  (testing "REPL options"
+    (let [shared-eval (evaller)
+          results     (shared-eval "(doc map)")
+          outs        (butlast results)
+          ret         (last results)]
+      (is (= 4 (count outs)))
+      (is (= (inc (count outs)) (count results)))
+      (is (clojure.string/starts-with? (-> outs first :val) "----"))
+      (map (fn [output] (let [{:keys [val tag]} output]
+                          (is (= :out tag))
+                          (is (string? val)))) outs)
+      (let [{:keys [tag val]} ret]
+        (is (= :ret tag))
+        (is (nil? (read-string val))))
+
+      (let [results (shared-eval "(dir clojure.set)")
+            outs    (butlast results)
+            ret     (last results)]
+        (is (= 12 (count outs)))
+        (is (= (inc (count outs)) (count results)))
+        (is (clojure.string/starts-with? (-> outs first :val) "difference"))
+        (map (fn [output] (let [{:keys [val tag]} output]
+                            (is (= :out tag))
+                            (is (string? val)))) outs)
+        (let [{:keys [tag val]} ret]
+          (is (= :ret tag))
+          (is (nil? (read-string val)))))
+
+      (let [results (shared-eval "(find-doc #\"root.*cause\")")
+            outs    (butlast results)
+            ret     (last results)]
+        (is (>= (count outs) 20))
+        (is (= (inc (count outs)) (count results)))
+        (is (clojure.string/starts-with? (-> outs first :val) "----"))
+        (map (fn [output] (let [{:keys [val tag]} output]
+                            (is (= :out tag))
+                            (is (string? val)))) outs)
+        (let [{:keys [tag val]} ret]
+          (is (= :ret tag))
+          (is (nil? (read-string val)))))
+
+      (let [results (shared-eval "(source max)")
+            outs    (butlast results)
+            ret     (last results)]
+        (is (= 1 (count outs)))
+        (is (= (inc (count outs)) (count results)))
+        (is (clojure.string/starts-with? (-> outs first :val) "(defn max"))
+        (map (fn [output] (let [{:keys [val tag]} output]
+                            (is (= :out tag))
+                            (is (string? val)))) outs)
+        (let [{:keys [tag val]} ret]
+          (is (= :ret tag))
+          (is (nil? (read-string val)))))
+
+      (let [results (shared-eval "(apropos \"map\")")
+            ret     (first results)]
+        (let [{:keys [tag val]} ret
+              data (read-string val)]
+          (is (= :ret tag))
+          (is (seq? data))
+          (is (>= (count data) 20)))))))
+
 (deftest ^:basic-prepl-tests basic-prepl-tests
   (testing "Basic Clojure forms"
     (let [shared-eval (evaller :comp-first? true)]

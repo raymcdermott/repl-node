@@ -46,23 +46,6 @@
       {:tag        :err :form form :ms 0 :ns "user" :val (pr-str e)
        :err-source :process-form})))
 
-(def specials {'apropos  `clj-repl/apropos
-               'dir      `clj-repl/dir
-               'doc      `clj-repl/doc
-               'find-doc `clj-repl/find-doc
-               'source   `clj-repl/source})
-
-(defn repl-special?
-  [token]
-  ((set (keys specials)) token))
-
-(defn repl-special
-  [f token]
-  (let [repl-fn (get specials f)]
-    (if (= 'apropos f)
-      (eval `(~repl-fn ~token))
-      (with-out-str (eval `(~repl-fn ~token))))))
-
 (defn read-forms
   "Read the string in the REPL buffer to obtain all forms (rather than just the first)"
   [input-string]
@@ -74,15 +57,9 @@
       (loop [data-read (form-reader)
              result    []]
         (if (= data-read sentinel)
-          (or (seq result)
-              {:tag :ret :form input-string :ms 0 :ns "user" :val ""})
-          (cond
-            (and (coll? data-read) (= 2 (count data-read)) (repl-special? (first data-read)))
-            (let [[f token] data-read]
-              {:tag :ret :form input-string :ms 0 :ns "user" :val (repl-special f token)})
-            :else
-            (recur (form-reader)
-                   (conj result data-read))))))
+          (or (seq result) {:tag :ret :form input-string :ms 0 :ns "user" :val ""})
+          (recur (form-reader)
+                 (conj result data-read)))))
     (catch Exception e
       (let [msg-data   (ex-data e)
             msg-string (.getMessage e)]
