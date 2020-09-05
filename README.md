@@ -1,5 +1,5 @@
+![CI-Test](https://github.com/raymcdermott/repl-node/workflows/CI-Test/badge.svg)
 ![CI-Lint](https://github.com/raymcdermott/repl-node/workflows/CI-Lint/badge.svg)
-
 
 
 # REPL-REPL - server
