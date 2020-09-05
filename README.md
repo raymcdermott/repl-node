@@ -1,3 +1,7 @@
+![CI-Lint](https://github.com/raymcdermott/repl-node/workflows/CI-Lint/badge.svg)
+
+
+
 # REPL-REPL - server
 
 A Clojure server designed to expose a shared PREPL.
