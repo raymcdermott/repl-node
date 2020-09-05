@@ -12,13 +12,13 @@
                    :or   {comp-first? false}}]
   (let [current-thread (Thread/currentThread)
         cl             (.getContextClassLoader current-thread)
-        prepl          (repl/shared-prepl {:server-daemon true})
+        prepl          (repl/init-prepl {:server-opts {:server-daemon true}})
         shared-eval    (partial repl/shared-eval prepl)]
     (.setContextClassLoader current-thread (DynamicClassLoader. cl))
     (if comp-first? (comp first shared-eval) shared-eval)))
 
 (deftest ^:version-tests version-tests
-  (testing "That we are using 1.10 or later"
+  (testing "That we are using 1.10 or later so that we have prepl"
     (let [shared-eval (evaller :comp-first? true)
           {:keys [tag val]} (shared-eval "*clojure-version*")
           {:keys [major minor]} (read-string val)]
@@ -29,8 +29,6 @@
 (deftest ^:prepl-repl-tests prepl-repl-tests
   (testing "REPL options"
     (let [shared-eval (evaller)]
-      ;; Load default namespaces
-      (shared-eval "(use 'clojure.repl)")
       (let [results (shared-eval "(doc map)")
             outs    (butlast results)
             ret     (last results)]
@@ -232,20 +230,19 @@
   (testing "Test spec / add-lib"
     (let [shared-eval (evaller)]
 
-      (let [add-ok (shared-eval "(use 'clj-deps.core)
-                                 (add-lib 'org.clojure/test.check {:mvn/version \"1.1.0\"})")]
-        (is (nil? (read-string (:val (first add-ok)))))
+      (let [add-ok (shared-eval "(add-lib 'vvvvalvalval/supdate {:mvn/version \"0.2.3\"})")]
         (is (boolean? (read-string (:val (last add-ok))))))
 
-      (let [spec-ok (shared-eval "(require '[clojure.spec.alpha :as s])
-                                  (s/valid? even? 42)")]
-        (is (nil? (read-string (:val (first spec-ok)))))
-        (is (true? (read-string (:val (last spec-ok))))))
+      (let [req-ok (shared-eval "(require '[vvvvalvalval.supdate.api :as supd :refer [supdate]])")]
+        (is (nil? (read-string (:val (first req-ok))))))
 
-      (let [gen-ok (shared-eval "(require '[clojure.spec.gen.alpha :as gen])
-                                 (gen/generate (s/gen int?))")]
-        (is (nil? (read-string (:val (first gen-ok)))))
-        (is (int? (read-string (:val (last gen-ok)))))))))
+      (let [def-ok (shared-eval "(def my-input {:a 1 :b [1 2 3] :c {\"d\" [{:e 1 :f 1} {:e 2 :f 2}]} :g 0 :h 0 :i 0})")]
+        (is (= 'var (first (read-string (:val (first def-ok)))))))
+
+      (let [sup-ok (shared-eval "(supdate my-input {:a inc :b [inc] :c {\"d\" [{:e inc}]} :g [inc inc inc] :my-missing-key inc :i false})")
+            result (read-string (:val (first sup-ok)))]
+        (is (map? result))
+        (is (= 3 (:g result)))))))
 
 (deftest ^:graceful-fail-tests graceful-fail-tests
   (testing "Test graceful failures for syntax and spec errors"

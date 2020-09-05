@@ -101,6 +101,17 @@
   ([opts]
    (-> opts shared-prepl-server prepl-client)))
 
+(def repl-requires
+  ["(require '[clojure.repl :refer (source apropos dir pst doc find-doc)])"
+   "(require '[clojure.java.javadoc :refer (javadoc)])"
+   "(require '[clojure.pprint :refer (pp pprint)])"
+   "(require '[clj-deps.core :refer (add-lib)])"])
+
+(defn init-prepl [{:keys [server-opts requires]
+                   :or {server-opts {} requires repl-requires}}]
+  (let [p (shared-prepl server-opts)]
+    (doall (map (partial shared-eval p) requires))
+    p))
 
 ;; then hook core.async
 

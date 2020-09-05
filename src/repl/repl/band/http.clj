@@ -123,8 +123,8 @@
   [{:keys [?data]}]
   (println :eval :data ?data)
 
-  (when-not @node-prepl                                       ;; Create on first use
-    (reset! node-prepl (repl/shared-prepl)))
+  (when-not @node-prepl                                     ;; Create on first use
+    (reset! node-prepl (repl/init-prepl {})))
 
   (let [input-form (:form ?data)
         result     {:prepl-response (repl/shared-eval @node-prepl input-form)}
@@ -247,6 +247,6 @@
     (start! port)))
 
 (defn -main [& _args]
-  (let [port (or (System/getenv "PORT") "56665")
+  (let [port   (or (System/getenv "PORT") "56665")
         secret (or (System/getenv "TEAM_SECRET") "Apropos soporpA Apropos soporpA")]
     (start-reptile-server port secret)))
