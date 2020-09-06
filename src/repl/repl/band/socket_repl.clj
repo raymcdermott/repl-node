@@ -110,5 +110,6 @@
 (defn init-prepl [{:keys [server-opts requires]
                    :or {server-opts {} requires repl-requires}}]
   (let [p (shared-prepl server-opts)]
-    (doall (map (partial shared-eval p) requires))
+    (doall (map (fn [r]
+                  (prn :require (shared-eval p r))) requires))
     p))
