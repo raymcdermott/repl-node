@@ -112,7 +112,3 @@
   (let [p (shared-prepl server-opts)]
     (doall (map (partial shared-eval p) requires))
     p))
-
-;; then hook core.async
-
-;; then make things nice

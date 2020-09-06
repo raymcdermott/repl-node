@@ -134,9 +134,7 @@
 (defn- register-socket [state client-id]
   (assoc state (keyword client-id) {}))
 
-;; TODO: Replace existing user name records
-;; TODO: Bring back the notion of a team to
-;; act as a barrier to entry
+;; TODO: Bring back the notion of a team to act as a barrier to entry
 
 (defn- register-user [login-user]
   (swap! connected-users #(user-specs/+user % login-user))
@@ -235,18 +233,19 @@
   (start-router!)
   (start-web-server! port))
 
-;; TODO have a default port
 (defn start-reptile-server
-  [port secret]
-  (reset! shared-secret secret)
-  (let [port           (Integer/parseInt port)
-        current-thread (Thread/currentThread)
-        classloader    (.getContextClassLoader current-thread)]
-    ; Need DynamicClassLoader to support add-lib
-    (.setContextClassLoader current-thread (DynamicClassLoader. classloader))
-    (start! port)))
+  ([secret]
+   (start-reptile-server secret "56665"))
+  ([secret port]
+   (reset! shared-secret secret)
+   (let [port           (Integer/parseInt port)
+         current-thread (Thread/currentThread)
+         classloader    (.getContextClassLoader current-thread)]
+     ; Need DynamicClassLoader to support add-lib
+     (.setContextClassLoader current-thread (DynamicClassLoader. classloader))
+     (start! port))))
 
 (defn -main [& _args]
   (let [port   (or (System/getenv "PORT") "56665")
         secret (or (System/getenv "TEAM_SECRET") "Apropos soporpA Apropos soporpA")]
-    (start-reptile-server port secret)))
+    (start-reptile-server secret port)))
