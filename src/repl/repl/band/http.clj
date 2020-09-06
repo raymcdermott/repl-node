@@ -247,5 +247,5 @@
 
 (defn -main [& _args]
   (let [port   (or (System/getenv "PORT") "56665")
-        secret (or (System/getenv "TEAM_SECRET") "jkk-4Pr0p05-50P0RP4-4PR0p05-50p0rP4")]
+        secret (or (System/getenv "TEAM_SECRET") "h4Pr0p05-50P0RP4-4PR0p05-50p0rP4")]
     (start-reptile-server secret port)))
