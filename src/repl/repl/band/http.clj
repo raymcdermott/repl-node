@@ -87,7 +87,7 @@
 
 ;; Sente uses Ring by default but we use WS to track users
 (defonce ^:private connected-users (atom {}))
-(defonce ^:private node-prepl (atom (repl/shared-prepl)))
+(defonce ^:private node-prepl (atom (repl/init-prepl {})))
 
 (defn >send
   "Send `msg` to each member"
@@ -123,7 +123,7 @@
   [{:keys [?data]}]
   (println :eval :data ?data)
 
-  (when-not @node-prepl                                     ;; Create on first use
+  (when-not @node-prepl
     (reset! node-prepl (repl/init-prepl {})))
 
   (let [input-form (:form ?data)
