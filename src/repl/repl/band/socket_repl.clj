@@ -4,7 +4,7 @@
     [clojure.core.server :as clj-server])
   (:import
     (java.net Socket ServerSocket)
-    (java.io OutputStreamWriter StringReader PushbackReader)
+    (java.io OutputStreamWriter StringReader)
     (clojure.lang LineNumberingPushbackReader DynamicClassLoader)))
 
 (set! *warn-on-reflection* true)
@@ -15,7 +15,7 @@
             *flush-on-newline* true]
     (prn clj-code)))
 
-(defn default-reptile-tag-reader
+(defn nk-tag-reader
   [tag val]
   {:nk-tag tag :nk-val (read-string (str val))})
 
@@ -25,14 +25,14 @@
   (try
     (send-code prepl-writer form)
 
-    (let [sentinel      ::eof
-          reader-opts   {:eof sentinel :default default-reptile-tag-reader}
+    (let [EOF           ::eof
+          reader-opts   {:eof EOF :default nk-tag-reader}
           prepl-read-fn (partial read reader-opts prepl-reader)]
       (loop [results [(prepl-read-fn)]]
         (cond
-          (= sentinel (last results))
-          {:tag        :err :form form :ms 0 :ns "user" :val ""
-           :err-source :prepl-eof}
+          (= EOF (last results))
+          {:tag  :err :err-source :prepl-eof
+           :form form :ms 0 :ns "user" :val ""}
 
           (= :ret (:tag (last results)))
           results
@@ -41,36 +41,39 @@
           (recur (conj results (prepl-read-fn))))))
 
     (catch Exception e
-      {:tag        :err :form form :ms 0 :ns "user" :val (pr-str e)
-       :err-source :process-form})))
+      {:tag  :err :err-source :eval-form
+       :form form :ms 0 :ns "user" :val (Throwable->map e)})))
 
-(defn read-forms
-  "Read the string in the REPL buffer to obtain all forms (rather than just the first)"
-  [input-string]
-  (try
-    (let [pbr         (PushbackReader. (StringReader. input-string))
-          sentinel    ::eof
-          reader-opts {:eof sentinel :default default-reptile-tag-reader}
-          form-reader (partial read reader-opts pbr)]
-      (loop [data-read (form-reader)
-             result    []]
-        (if (= data-read sentinel)
-          (or (seq result) {:tag :ret :form input-string :ms 0 :ns "user" :val "nil"})
-          (recur (form-reader)
-                 (conj result data-read)))))
-    (catch Exception e
-      (let [msg-data   (ex-data e)
-            msg-string (.getMessage e)]
-        {:tag :err :form input-string :ms 0 :ns "user" :ex-data (map? msg-data)
-         :val (if msg-data (pr-str msg-data) msg-string) :err-source :read-forms}))))
+(defmacro with-read-known
+  "Evaluates body with *read-eval* set to a \"known\" value,
+   i.e. substituting true for :unknown if necessary."
+  [& body]
+  `(binding [*read-eval* (if (= :unknown *read-eval*) true *read-eval*)]
+     ~@body))
+
+(defn- split-multi-forms
+  "Reads expressions in str. Returns a list of [form string]"
+  [str]
+  (let [EOF    (Object.)
+        reader (LineNumberingPushbackReader. (StringReader. str))]
+    (loop [form (with-read-known (read reader false EOF))
+           result []]
+      (if (identical? form EOF)
+        (or (seq result) {:tag :ret :empty true :form str :ms 0 :ns "user" :val "nil"})
+        (recur (with-read-known (read reader false EOF))
+               (conj result form))))))
 
 (defn shared-eval
-  "Evaluate the form(s) provided in the string `forms-str` using the given `repl`"
-  [repl forms-str]
-  (let [expanded-forms (read-forms forms-str)]
-    (if (map? expanded-forms)                               ; error map
-      [expanded-forms]
-      (flatten (map (partial eval-form repl) expanded-forms)))))
+  "Evaluate the form(s) provided in the string `input-string` using the given `repl`"
+  [repl input-string]
+  (try
+    (let [expanded-forms (split-multi-forms input-string)]
+      (if (map? expanded-forms)
+        [expanded-forms]                                    ; empty input
+        (flatten (map (partial eval-form repl) expanded-forms))))
+    (catch Exception e
+      [{:tag :err :form input-string :ms 0 :ns "user" :ex-data (Throwable->map e)
+        :val (ex-message e) :err-source :read-forms}])))
 
 (defn prepl-client
   "Attaching to a PREPL on a given `port`"
@@ -108,7 +111,7 @@
    "(require '[clj-deps.core :refer (add-lib)])"])
 
 (defn init-prepl [{:keys [server-opts requires]
-                   :or {server-opts {} requires repl-requires}}]
+                   :or   {server-opts {} requires repl-requires}}]
   (let [p (shared-prepl server-opts)]
     (doall (map (partial shared-eval p) requires))
     p))

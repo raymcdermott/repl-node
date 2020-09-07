@@ -117,12 +117,8 @@
   [{:keys [?data]}]
   (>send [:repl-repl/keystrokes ?data]))
 
-;; TODO also have the user name of the eval request
-;; makes it easier to show who did what
 (defmethod ^:private -event-msg-handler :repl-repl/eval
   [{:keys [?data]}]
-  (println :eval :data ?data)
-
   (when-not @node-prepl
     (reset! node-prepl (repl/init-prepl {})))
 

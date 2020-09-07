@@ -192,8 +192,7 @@
   (testing "Various comment styles"
     (let [shared-eval (evaller :comp-first? true)]
 
-      ;; bad tests!!! comments should pass through
-      (let [input "; 42"
+      (let [input ";; 42"
             {:keys [tag val form]} (shared-eval input)]
         (is (= :ret tag))
         (is (= form input))
@@ -209,7 +208,13 @@
             {:keys [tag val form]} (shared-eval input)]
         (is (= :ret tag))
         (is (= form input))
-        (is (nil? (read-string val)))))))
+        (is (nil? (read-string val))))
+
+      (let [input "#_ xx 1"
+            {:keys [tag val form]} (shared-eval input)]
+        (is (= :ret tag))
+        (is (= form "1"))
+        (is (= 1 (read-string val)))))))
 
 (deftest ^:multi-form-tests multi-form-tests
   (testing "Multiple forms in a buffer"
@@ -233,7 +238,7 @@
       (let [add-ok (shared-eval "(add-lib 'vvvvalvalval/supdate {:mvn/version \"0.2.3\"})")]
         (is (boolean? (read-string (:val (last add-ok))))))
 
-      (let [req-ok (shared-eval "(require '[vvvvalvalval.supdate.api :as supd :refer [supdate]])")]
+      (let [req-ok (shared-eval "(require '[vvvvalvalval.supdate.api :refer [supdate]])")]
         (is (nil? (read-string (:val (first req-ok))))))
 
       (let [def-ok (shared-eval "(def my-input {:a 1 :b [1 2 3] :c {\"d\" [{:e 1 :f 1} {:e 2 :f 2}]} :g 0 :h 0 :i 0})")]
@@ -249,20 +254,20 @@
     (let [shared-eval (evaller :comp-first? true)]
 
       (let [{:keys [err-source ex-data tag val]} (shared-eval "(prn \"000")]
-        (is (and (false? ex-data)
+        (is (and (map? ex-data)
                  (= :err tag)
                  (= :read-forms err-source)))
-        (is (= "EOF while reading string" val)))
+        (is (= "java.lang.RuntimeException: EOF while reading string" val)))
 
       (let [{:keys [err-source ex-data tag val]} (shared-eval "(")]
-        (is (and (false? ex-data)
+        (is (and (map? ex-data)
                  (= :err tag)
                  (= :read-forms err-source)))
-        (is (= "EOF while reading" val)))
+        (is (= "java.lang.RuntimeException: EOF while reading, starting at line 1" val)))
 
       (let [{:keys [tag val]} (shared-eval "(defn x (+ 1 2))")
             {:keys [cause via trace data phase]}
-            (binding [*default-data-reader-fn* repl/default-reptile-tag-reader]
+            (binding [*default-data-reader-fn* repl/nk-tag-reader]
               (read-string val))
             problems (::spec/problems data)
             spec     (::spec/spec data)
