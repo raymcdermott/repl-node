@@ -12,7 +12,8 @@
 (defn send-code
   [code-writer clj-code]
   (binding [*out*              code-writer
-            *flush-on-newline* true]
+            *flush-on-newline* true
+            *print-readably*   true]
     (prn clj-code)))
 
 (defn nk-tag-reader
@@ -22,27 +23,25 @@
 (defn eval-form
   "Evaluate `form` using the given `prepl` map"
   [{:keys [prepl-writer prepl-reader]} form]
-  (try
-    (send-code prepl-writer form)
+  (let [error-map {:tag :err :phase :execution :form form :ms 0 :ns "user" val ""}]
+    (try
+      (send-code prepl-writer form)
 
-    (let [EOF           ::eof
-          reader-opts   {:eof EOF :default nk-tag-reader}
-          prepl-read-fn (partial read reader-opts prepl-reader)]
-      (loop [results [(prepl-read-fn)]]
-        (cond
-          (= EOF (last results))
-          {:tag  :err :err-source :prepl-eof
-           :form form :ms 0 :ns "user" :val ""}
+      (let [EOF           (Object.)
+            reader-opts   {:eof EOF :default nk-tag-reader}
+            prepl-read-fn (partial read reader-opts prepl-reader)]
+        (loop [results [(prepl-read-fn)]]
+          (cond
+            (identical? EOF (last results))
+            error-map
 
-          (= :ret (:tag (last results)))
-          results
+            (= :ret (:tag (last results)))
+            results
 
-          :else
-          (recur (conj results (prepl-read-fn))))))
+            :else
+            (recur (conj results (prepl-read-fn))))))
 
-    (catch Exception e
-      {:tag  :err :err-source :eval-form
-       :form form :ms 0 :ns "user" :val (Throwable->map e)})))
+      (catch Exception e (assoc error-map :val (Throwable->map e))))))
 
 (defmacro with-read-known
   "Evaluates body with *read-eval* set to a \"known\" value,
@@ -56,13 +55,14 @@
   [str]
   (let [EOF    (Object.)
         reader (LineNumberingPushbackReader. (StringReader. str))]
-    (loop [form (with-read-known (read reader false EOF))
+    (loop [form   (with-read-known (read reader false EOF))
            result []]
       (if (identical? form EOF)
         (or (seq result) {:tag :ret :empty true :form str :ms 0 :ns "user" :val "nil"})
         (recur (with-read-known (read reader false EOF))
                (conj result form))))))
 
+;; TODO -- how to make eval cancellable? Also timeouts on Thread | Promise | Core Async
 (defn shared-eval
   "Evaluate the form(s) provided in the string `input-string` using the given `repl`"
   [repl input-string]
@@ -73,7 +73,7 @@
         (flatten (map (partial eval-form repl) expanded-forms))))
     (catch Exception e
       [{:tag :err :form input-string :ms 0 :ns "user" :ex-data (Throwable->map e)
-        :val (ex-message e) :err-source :read-forms}])))
+        :val (ex-message e) :phase :read-source}])))
 
 (defn prepl-client
   "Attaching to a PREPL on a given `port`"
@@ -94,13 +94,13 @@
                                :accept        'clojure.core.server/io-prepl}
                               opts)
         current-thread (Thread/currentThread)
-        cl             (.getContextClassLoader current-thread)]
-    (.setContextClassLoader current-thread (DynamicClassLoader. cl))
+        class-loader   (.getContextClassLoader current-thread)]
+    (.setContextClassLoader current-thread (DynamicClassLoader. class-loader))
     (.getLocalPort ^ServerSocket (clj-server/start-server socket-opts))))
 
-(defn shared-prepl
+(defn ->prepl-client
   ([]
-   (shared-prepl {}))
+   (->prepl-client {}))
   ([opts]
    (-> opts shared-prepl-server prepl-client)))
 
@@ -112,6 +112,6 @@
 
 (defn init-prepl [{:keys [server-opts requires]
                    :or   {server-opts {} requires repl-requires}}]
-  (let [p (shared-prepl server-opts)]
+  (let [p (->prepl-client server-opts)]
     (doall (map (partial shared-eval p) requires))
     p))

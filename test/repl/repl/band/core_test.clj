@@ -7,7 +7,6 @@
     [repl.repl.band.socket-repl :as repl])
   (:import (clojure.lang DynamicClassLoader)))
 
-; use this as a fixture for each test?
 (defn- evaller [& {:keys [comp-first?]
                    :or   {comp-first? false}}]
   (let [current-thread (Thread/currentThread)
@@ -253,16 +252,16 @@
   (testing "Test graceful failures for syntax and spec errors"
     (let [shared-eval (evaller :comp-first? true)]
 
-      (let [{:keys [err-source ex-data tag val]} (shared-eval "(prn \"000")]
+      (let [{:keys [phase ex-data tag val]} (shared-eval "(prn \"000")]
         (is (and (map? ex-data)
                  (= :err tag)
-                 (= :read-forms err-source)))
+                 (= :read-source phase)))
         (is (= "java.lang.RuntimeException: EOF while reading string" val)))
 
-      (let [{:keys [err-source ex-data tag val]} (shared-eval "(")]
+      (let [{:keys [phase ex-data tag val]} (shared-eval "(")]
         (is (and (map? ex-data)
                  (= :err tag)
-                 (= :read-forms err-source)))
+                 (= :read-source phase)))
         (is (= "java.lang.RuntimeException: EOF while reading, starting at line 1" val)))
 
       (let [{:keys [tag val]} (shared-eval "(defn x (+ 1 2))")
