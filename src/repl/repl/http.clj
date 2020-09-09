@@ -1,10 +1,10 @@
-(ns repl.repl.band.http
+(ns repl.repl.http
   (:require
     [aleph.http :as aleph]
     [aleph.netty :as netty]
     [compojure.core :refer [defroutes GET POST]]
     [compojure.route :as route]
-    [repl.repl.band.socket-repl :as repl]
+    [repl.repl.socket-prepl :as socket-prepl]
     [repl.repl.user :as user-specs]
     [ring.middleware.defaults]
     [taoensso.sente :as sente]
@@ -87,7 +87,7 @@
 
 ;; Sente uses Ring by default but we use WS to track users
 (defonce ^:private connected-users (atom {}))
-(defonce ^:private node-prepl (atom (repl/init-prepl {})))
+(defonce ^:private node-prepl (atom (socket-prepl/init-prepl {})))
 
 (defn >send
   "Send `msg` to each member"
@@ -120,10 +120,10 @@
 (defmethod ^:private -event-msg-handler :repl-repl/eval
   [{:keys [?data]}]
   (when-not @node-prepl
-    (reset! node-prepl (repl/init-prepl {})))
+    (reset! node-prepl (socket-prepl/init-prepl {})))
 
   (let [input-form (:form ?data)
-        result     {:prepl-response (repl/shared-eval @node-prepl input-form)}
+        result     {:prepl-response (socket-prepl/shared-eval @node-prepl input-form)}
         response   (merge ?data result)]
     (>send [:repl-repl/eval response])))
 

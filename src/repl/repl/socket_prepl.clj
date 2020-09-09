@@ -1,4 +1,4 @@
-(ns repl.repl.band.socket-repl
+(ns repl.repl.socket-prepl
   (:require
     [clojure.java.io :as io]
     [clojure.core.server :as clj-server])

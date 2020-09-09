@@ -1,18 +1,18 @@
-(ns repl.repl.band.core-test
+(ns repl.repl.core-test
   (:require
     [clojure.spec.alpha :as spec]
     [clojure.test :refer :all]
     [clojure.string :as str]
-    [repl.repl.band.http :refer :all]
-    [repl.repl.band.socket-repl :as repl])
+    [repl.repl.http :refer :all]
+    [repl.repl.socket-prepl :as socket-prepl])
   (:import (clojure.lang DynamicClassLoader)))
 
 (defn- evaller [& {:keys [comp-first?]
                    :or   {comp-first? false}}]
   (let [current-thread (Thread/currentThread)
         cl             (.getContextClassLoader current-thread)
-        prepl          (repl/init-prepl {:server-opts {:server-daemon true}})
-        shared-eval    (partial repl/shared-eval prepl)]
+        prepl          (socket-prepl/init-prepl {:server-opts {:server-daemon true}})
+        shared-eval    (partial socket-prepl/shared-eval prepl)]
     (.setContextClassLoader current-thread (DynamicClassLoader. cl))
     (if comp-first? (comp first shared-eval) shared-eval)))
 
@@ -266,7 +266,7 @@
 
       (let [{:keys [tag val]} (shared-eval "(defn x (+ 1 2))")
             {:keys [cause via trace data phase]}
-            (binding [*default-data-reader-fn* repl/nk-tag-reader]
+            (binding [*default-data-reader-fn* socket-prepl/nk-tag-reader]
               (read-string val))
             problems (::spec/problems data)
             spec     (::spec/spec data)

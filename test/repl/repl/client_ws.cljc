@@ -1,4 +1,4 @@
-(ns repl.repl.band.client-ws
+(ns repl.repl.client-ws
   (:require
     [taoensso.encore :refer [have have?]]
     [taoensso.timbre :refer [tracef debugf infof warnf errorf]]

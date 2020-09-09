@@ -23,11 +23,9 @@ $ clojure -A:repl 8888 warm-blooded-lizards-rock
 ```
 
 ## Hosting
-The server is intended to be hosted on an OS built using LinuxKit.
+A GitHub action builds and publishes a Docker image on GitHub packages.
 
-The container is used to create an image via a GitHub action.
-
-The image will be published on GitHub packages. 
+The server running the image should be hosted on an OS built using LinuxKit.
 
 ## Why LinuxKit?
 When providing a public REPL there is a possibility of access and disruption to the underlying operating system. With LinuxKit, Alpine Linux is used as the base operating system and can be defined to contain only the minimal features needed to run Clojure (no shells / logins / etc.). It is further secured by running over a read-only file system. 
@@ -42,8 +40,8 @@ The first version will be considered feature complete once the server provides
 
 - [X] Shared REPL state
 - [X] Shared view of edits in real-time 
-- [X] Shared REPL history
 - [X] Dynamic addition of new libraries to the REPL
+- [ ] REPL input history
 
 ##### Networking and hosting
 
@@ -55,10 +53,6 @@ The first version will be considered feature complete once the server provides
 
 - [ ] Custom LinuxKit OS image
 - [X] Authentication using shared secret
-
-### Heroku Deployment
-
-
   
 ## Planned features
 

@@ -1,5 +1,5 @@
-(ns repl.repl.band.opener
-  (:use [repl.repl.band.reload-server]))
+(ns repl.repl.opener
+  (:use [repl.repl.reload-server]))
 
 ;------------------- ************* -------------------
 ;

@@ -1,5 +1,5 @@
-(ns repl.repl.band.reload-server
-  (:require [repl.repl.band.http :as http]
+(ns repl.repl.reload-server
+  (:require [repl.repl.http :as http]
             [clojure-watch.core :refer [start-watch]]
             [clojure.java.io :as io])
   (:import (clojure.lang DynamicClassLoader)))
@@ -27,7 +27,7 @@
       :callback    (fn [_ filename]
                      (when-not (.isDirectory (io/file filename))
                        (http/stop!)
-                       (load-file (absolute-path (str path "/repl/repl/band/socket_repl.clj")))
-                       (load-file (absolute-path (str path "/repl/repl/band/http.clj")))
+                       (load-file (absolute-path (str path "/repl/repl/socket_prepl.clj")))
+                       (load-file (absolute-path (str path "/repl/repl/http.clj")))
                        (start-server port secret)))
       :options     {:recursive true}}]))
