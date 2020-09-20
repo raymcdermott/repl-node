@@ -4,7 +4,7 @@
 
 # REPL-REPL - server
 
-A Clojure server designed to expose a shared PREPL.
+A Clojure server designed to expose a shared REPL.
 
 The server is designed to be accessible via a web socket.
 
@@ -12,15 +12,25 @@ An EDN map will contain the expression(s) to be evaluated.
 
 ## Usage
 
-In this mode, a PREPL socket server will be started on an available port.
+```bash
+$ clojure -A:repl
+```
 
-The command takes these run time parameters:
-- `http-port` - a number above 1024, on which the web server will be exposed
-- `shared-secret` - to hand out to clients so that they can connect
+The web server will be exposed on port `56665` by default
+
+Optionally you can provide a port number:
 
 ```bash
-$ clojure -A:repl 8888 warm-blooded-lizards-rock
+$ clojure -A:repl 8888
 ```
+
+Optionally you can provide the port number via an environment variable `PORT`:
+
+```bash
+$ PORT=8998 clojure -A:repl 
+```
+
+In all cases, a PREPL socket server will be started locally on an available port.
 
 ## Hosting
 A GitHub action builds and publishes a Docker image on GitHub packages.

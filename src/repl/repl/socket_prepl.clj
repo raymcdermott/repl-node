@@ -1,47 +1,22 @@
 (ns repl.repl.socket-prepl
   (:require
-    [clojure.java.io :as io]
-    [clojure.core.server :as clj-server])
-  (:import
-    (java.net Socket ServerSocket)
-    (java.io OutputStreamWriter StringReader)
-    (clojure.lang LineNumberingPushbackReader DynamicClassLoader)))
+    [clojure.core.async :as async]
+    [clojure.core.server :refer [prepl]])
+  (:import (java.io PipedReader PipedWriter Writer StringReader)
+           (clojure.lang LineNumberingPushbackReader)
+           (org.apache.commons.codec.binary Hex)))
 
 (set! *warn-on-reflection* true)
-
-(defn send-code
-  [code-writer clj-code]
-  (binding [*out*              code-writer
-            *flush-on-newline* true
-            *print-readably*   true]
-    (prn clj-code)))
 
 (defn nk-tag-reader
   [tag val]
   {:nk-tag tag :nk-val (read-string (str val))})
 
 (defn eval-form
-  "Evaluate `form` using the given `prepl` map"
-  [{:keys [prepl-writer prepl-reader]} form]
-  (let [error-map {:tag :err :phase :execution :form form :ms 0 :ns "user" val ""}]
-    (try
-      (send-code prepl-writer form)
-
-      (let [EOF           (Object.)
-            reader-opts   {:eof EOF :default nk-tag-reader}
-            prepl-read-fn (partial read reader-opts prepl-reader)]
-        (loop [results [(prepl-read-fn)]]
-          (cond
-            (identical? EOF (last results))
-            error-map
-
-            (= :ret (:tag (last results)))
-            results
-
-            :else
-            (recur (conj results (prepl-read-fn))))))
-
-      (catch Exception e (assoc error-map :val (Throwable->map e))))))
+  "Write `form for evaluation` using the `prepl-writer`"
+  [^Writer prepl-writer ^String form]
+  (.write prepl-writer form)
+  (.flush prepl-writer))
 
 (defmacro with-read-known
   "Evaluates body with *read-eval* set to a \"known\" value,
@@ -50,59 +25,91 @@
   `(binding [*read-eval* (if (= :unknown *read-eval*) true *read-eval*)]
      ~@body))
 
-(defn- split-multi-forms
-  "Reads expressions in str. Returns a list of [form string]"
-  [str]
+(defn bytes->hex
+  [^bytes ba]
+  (Hex/encodeHexString ba))
+
+(defn digest
+  [s]
+  (let [md5 (java.security.MessageDigest/getInstance "MD5")]
+    (-> (.digest md5 (.getBytes ^String s))
+        bytes->hex)))
+
+(defn message->structured-forms
+  "Produce a map of expression(s) in string `s` that can be read. Any read failure throws"
+  [s]
   (let [EOF    (Object.)
-        reader (LineNumberingPushbackReader. (StringReader. str))]
-    (loop [form   (with-read-known (read reader false EOF))
-           result []]
-      (if (identical? form EOF)
-        (or (seq result) {:tag :ret :empty true :form str :ms 0 :ns "user" :val "nil"})
-        (recur (with-read-known (read reader false EOF))
-               (conj result form))))))
+        reader (LineNumberingPushbackReader. (StringReader. s))
+        msg    {:message-digest (digest s)
+                :message        s}]
+    (reduce (fn [results [form expr-str]]
+              (if (identical? form EOF)
+                (reduced results)
+                (update results
+                        :exprs conj {:expr-id  (digest expr-str)
+                                     :expr-str expr-str})))
+            msg (repeatedly #(with-read-known (read+string reader false EOF))))))
 
-;; TODO -- how to make eval cancellable? Also timeouts on Thread | Promise | Core Async
+(defn- ex->data
+  [ex phase]
+  (assoc (Throwable->map ex) :phase phase))
+
+;; TODO -- how to make eval cancellable?
+;; idea ...
+;; keep a separate PREPL that is given successful evals
+;; then one can always interrupt a running prepl thread
+;; to keep the session going, swap in the standby ...
+;; and then feed the history into a new standby
+
 (defn shared-eval
-  "Evaluate the form(s) provided in the string `input-string` using the given `repl`"
-  [repl input-string]
+  "Evaluate the form(s) provided in the string `input-string` using the given `prepl-writer`"
+  [out-channel prepl-writer {:keys [form] :as message-data}]
   (try
-    (let [expanded-forms (split-multi-forms input-string)]
-      (if (map? expanded-forms)
-        [expanded-forms]                                    ; empty input
-        (flatten (map (partial eval-form repl) expanded-forms))))
+    (when-let [forms (message->structured-forms form)]
+      (async/put! out-channel (merge message-data {:correlations forms}))
+      (doall (map (partial eval-form prepl-writer)
+                  (map :expr-str (reverse (:exprs forms))))))
     (catch Exception e
-      [{:tag :err :form input-string :ms 0 :ns "user" :ex-data (Throwable->map e)
-        :val (ex-message e) :phase :read-source}])))
+      [{:tag  :err :message-digest (digest form) :ex-data (ex->data e :eval-forms)
+        :form form :ms 0 :ns "not-known" :val (ex-message e)}])))
 
-(defn prepl-client
-  "Attaching to a PREPL on a given `port`"
-  [port]
-  (let [client       (Socket. "localhost" ^Integer port)
-        prepl-reader (LineNumberingPushbackReader. (io/reader client))
-        prepl-writer (OutputStreamWriter. (io/output-stream client))]
-    {:prepl-reader prepl-reader :prepl-writer prepl-writer}))
+(defn emit
+  [out-channel out-map]
+  (let [lock        (Object.)
+        d           (digest (:form out-map))
+        message-map (assoc out-map :expr-id d)]
+    (locking lock
+      (async/put!
+        out-channel
+        (if-not (#{:ret :tap} (:tag message-map))
+          out-map
+          (try
+            (assoc message-map :val (pr-str (:val message-map)))
+            (catch Throwable ex (assoc message-map
+                                  :val (ex->data ex :print-eval-result) :exception true))))))))
 
-;; NOTE: DynamicClassLoader support addlib
+(defn ^Writer async-prepl
+  "Create a prepl that will output results to out-ch.
+  Returns a Writer that can be used to write forms for evaluation."
+  [out-ch]
+  (let [pipe   (PipedWriter.)
+        reader (LineNumberingPushbackReader. (PipedReader. pipe))]
+    (async/thread (prepl reader (partial emit out-ch)))
+    pipe))
 
-(defn shared-prepl-server
-  "Create a PREPL socket-server and return the port on which it is available"
-  [opts]
-  (let [socket-opts    (merge {:port          0
-                               :name          "repl-node"
-                               :server-daemon false
-                               :accept        'clojure.core.server/io-prepl}
-                              opts)
-        current-thread (Thread/currentThread)
-        class-loader   (.getContextClassLoader current-thread)]
-    (.setContextClassLoader current-thread (DynamicClassLoader. class-loader))
-    (.getLocalPort ^ServerSocket (clj-server/start-server socket-opts))))
+(defn prepl-listen
+  "Obtain results from `listen-ch` and send them on via `send-fn`"
+  [listen-ch send-fn]
+  (async/go-loop []
+    (send-fn (async/<! listen-ch))
+    (recur)))
 
-(defn ->prepl-client
-  ([]
-   (->prepl-client {}))
-  ([opts]
-   (-> opts shared-prepl-server prepl-client)))
+(comment
+  (defn run-cmds
+    [writer]
+    ;; TODO: prevent this from being sent by users!!
+    (.write writer ":repl/quit\n"))
+  )
 
 (def repl-requires
   ["(require '[clojure.repl :refer (source apropos dir pst doc find-doc)])"
@@ -110,8 +117,15 @@
    "(require '[clojure.pprint :refer (pp pprint)])"
    "(require '[clj-deps.core :refer (add-lib)])"])
 
-(defn init-prepl [{:keys [server-opts requires]
-                   :or   {server-opts {} requires repl-requires}}]
-  (let [p (->prepl-client server-opts)]
-    (doall (map (partial shared-eval p) requires))
-    p))
+;; TODO spec ... out-ch and send-fn are required
+(defn ^Writer init-prepl
+  [{:keys [out-ch requires out-fn send-fn]
+    :or   {requires repl-requires}}]
+  (let [prepl-writer (async-prepl out-ch)]
+    (doall (map (partial shared-eval out-ch prepl-writer)
+                (map #(assoc {} :form % :message-id (digest %)) requires)))
+    (if (and out-fn send-fn)
+      (out-fn out-ch send-fn)
+      (prepl-listen out-ch send-fn))
+    prepl-writer))
+

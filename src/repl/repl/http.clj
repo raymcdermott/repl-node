@@ -2,6 +2,7 @@
   (:require
     [aleph.http :as aleph]
     [aleph.netty :as netty]
+    [clojure.core.async :refer [chan]]
     [compojure.core :refer [defroutes GET POST]]
     [compojure.route :as route]
     [repl.repl.socket-prepl :as socket-prepl]
@@ -87,7 +88,6 @@
 
 ;; Sente uses Ring by default but we use WS to track users
 (defonce ^:private connected-users (atom {}))
-(defonce ^:private node-prepl (atom (socket-prepl/init-prepl {})))
 
 (defn >send
   "Send `msg` to each member"
@@ -117,6 +117,20 @@
   [{:keys [?data]}]
   (>send [:repl-repl/keystrokes ?data]))
 
+(defn send-eval-result
+  [result]
+  (>send [:repl-repl/eval result]))
+
+(defonce ^:private node-prepl (atom (socket-prepl/init-prepl
+                                      {:out-ch  (chan)
+                                       :send-fn send-eval-result})))
+
+(defmethod ^:private -event-msg-handler :repl-repl/eval
+  [{:keys [?data]}]
+  (when (:form ?data)
+    (socket-prepl/shared-eval @node-prepl ?data)))
+
+;; ORIGINAL
 (defmethod ^:private -event-msg-handler :repl-repl/eval
   [{:keys [?data]}]
   (when-not @node-prepl
