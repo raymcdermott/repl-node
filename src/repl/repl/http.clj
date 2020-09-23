@@ -5,7 +5,7 @@
     [clojure.core.async :refer [chan]]
     [compojure.core :refer [defroutes GET POST]]
     [compojure.route :as route]
-    [repl.repl.socket-prepl :as socket-prepl]
+    [repl.repl.async-prepl :as socket-prepl]
     [repl.repl.user :as user-specs]
     [ring.middleware.defaults]
     [taoensso.sente :as sente]
@@ -121,25 +121,24 @@
   [result]
   (>send [:repl-repl/eval result]))
 
-(defonce ^:private node-prepl (atom (socket-prepl/init-prepl
-                                      {:out-ch  (chan)
-                                       :send-fn send-eval-result})))
+(def ^:private prepl-defaults {:out-ch  (chan)
+                               :send-fn send-eval-result})
+
+(def ^:private prepl-writer (atom (socket-prepl/init-prepl prepl-defaults)))
 
 (defmethod ^:private -event-msg-handler :repl-repl/eval
   [{:keys [?data]}]
-  (when (:form ?data)
-    (socket-prepl/shared-eval @node-prepl ?data)))
+  (socket-prepl/shared-eval (:out-ch prepl-defaults) @prepl-writer ?data))
 
 ;; ORIGINAL
-(defmethod ^:private -event-msg-handler :repl-repl/eval
-  [{:keys [?data]}]
-  (when-not @node-prepl
-    (reset! node-prepl (socket-prepl/init-prepl {})))
-
-  (let [input-form (:form ?data)
-        result     {:prepl-response (socket-prepl/shared-eval @node-prepl input-form)}
-        response   (merge ?data result)]
-    (>send [:repl-repl/eval response])))
+(comment
+  (defmethod ^:private -event-msg-handler :repl-repl/eval
+    [{:keys [?data]}]
+    (let [input-form (:form ?data)
+          out-ch     (:out-ch prepl-defaults)
+          result     (socket-prepl/shared-eval out-ch @prepl-writer input-form)
+          response   (assoc ?data :prepl-response result)]
+      (>send [:repl-repl/eval response]))))
 
 (defn- register-socket [state client-id]
   (assoc state (keyword client-id) {}))

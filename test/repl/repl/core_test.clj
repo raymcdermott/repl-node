@@ -3,35 +3,107 @@
     [clojure.spec.alpha :as spec]
     [clojure.test :refer :all]
     [clojure.string :as str]
-    [repl.repl.http :refer :all]
-    [repl.repl.socket-prepl :as socket-prepl])
+    [repl.repl.await :refer [async-test-prepl-writer gather]]
+    [repl.repl.async-prepl :as prepl]
+    [clojure.core.async :as async])
   (:import (clojure.lang DynamicClassLoader)))
 
-(defn- evaller [& {:keys [comp-first?]
-                   :or   {comp-first? false}}]
-  (let [current-thread (Thread/currentThread)
-        cl             (.getContextClassLoader current-thread)
-        prepl          (socket-prepl/init-prepl {:server-opts {:server-daemon true}})
-        shared-eval    (partial socket-prepl/shared-eval prepl)]
-    (.setContextClassLoader current-thread (DynamicClassLoader. cl))
-    (if comp-first? (comp first shared-eval) shared-eval)))
+;;; WORKS
+;(let [prepl-out-ch (async/chan)
+;      results-ch   (async/chan)
+;      wrt          (async-test-prepl-writer results-ch prepl-out-ch)
+;      form         "(+ 1 2)"]
+;  (prepl/shared-eval {:out-ch prepl-out-ch :writer wrt}
+;                     (assoc {} :form form :message-id (prepl/digest form)))
+;  (filter :tag (gather results-ch)))
+
+(defn- ->prepl-writer
+  []
+  (let [prepl-out-ch (async/chan)
+        results-ch   (async/chan)]
+    {:out-ch     prepl-out-ch
+     :results-ch results-ch
+     :writer     (async-test-prepl-writer results-ch prepl-out-ch)}))
+
+(defn- run-eval
+  [eval-opts eval-string]
+  (let [form+id {:form eval-string :message-id (prepl/digest eval-string)}]
+    (prepl/shared-eval eval-opts form+id)))
+
+(defn- sync-results
+  [{:keys [results-ch tags-only?]
+    :or   {tags-only? true}
+    :as   prepl-opts} eval-string]
+  (run-eval prepl-opts eval-string)
+  (let [results (gather results-ch)]
+    (prn :results results)
+    (if tags-only?
+      (filter :tag results)
+      results)))
 
 (deftest ^:version-tests version-tests
   (testing "That we are using 1.10 or later so that we have prepl"
-    (let [shared-eval (evaller :comp-first? true)
-          {:keys [tag val]} (shared-eval "*clojure-version*")
+    (let [prepl-opts (->prepl-writer)
+          form       "*clojure-version*"
+          {:keys [val]} (first (filter :tag (sync-results prepl-opts form)))
           {:keys [major minor]} (read-string val)]
-      (is (= :ret tag))
       (is (= major 1))
       (is (>= minor 10)))))
 
+(deftest ^:xxx-tests xxx-tests
+  (testing "That we are using 1.10 or later so that we have prepl"
+    (let [prepl-opts (->prepl-writer)
+          form       "(+ 1 2)"
+          {:keys [val]} (first (filter :tag (sync-results prepl-opts form)))]
+      (is (= "3" val)))))
+
+(deftest read-xxx-tests
+  (testing "Lambdas"
+    (let [prepl-opts (->prepl-writer)
+          {:keys [val]} (first (sync-results prepl-opts
+                                             "(map #(inc %) (range 3))"))]
+      (is (= '(1 2 3) (read-string val)))
+
+      (let [{:keys [val]} (first (sync-results prepl-opts
+                                               "(map (fn [x] (inc x)) (range 3))"))]
+        (is (= '(1 2 3) (read-string val)))))))
+
+
+
 (deftest ^:prepl-repl-tests prepl-repl-tests
   (testing "REPL options"
-    (let [shared-eval (evaller)]
-      (let [results (shared-eval "(doc map)")
+    (let [prepl-opts (->prepl-writer)
+          results    (sync-results prepl-opts "(doc map)")
+          outs       (butlast results)
+          ret        (last results)]
+      (is (= {} results))
+      (is (= 4 (count outs)))
+      (is (= (inc (count outs)) (count results)))
+      (is (clojure.string/starts-with? (-> outs first :val) "----"))
+      (map (fn [output] (let [{:keys [val tag]} output]
+                          (is (= :out tag))
+                          (is (string? val)))) outs)
+      (let [{:keys [tag val]} ret]
+        (is (= :ret tag))
+        (is (nil? (read-string val))))
+
+      (let [results (sync-results prepl-opts "(dir clojure.set)")
             outs    (butlast results)
             ret     (last results)]
-        (is (= 4 (count outs)))
+        (is (= 12 (count outs)))
+        (is (= (inc (count outs)) (count results)))
+        (is (clojure.string/starts-with? (-> outs first :val) "difference"))
+        (map (fn [output] (let [{:keys [val tag]} output]
+                            (is (= :out tag))
+                            (is (string? val)))) outs)
+        (let [{:keys [tag val]} ret]
+          (is (= :ret tag))
+          (is (nil? (read-string val)))))
+
+      (let [results (sync-results prepl-opts "(find-doc #\"root.*cause\")")
+            outs    (butlast results)
+            ret     (last results)]
+        (is (>= (count outs) 20))
         (is (= (inc (count outs)) (count results)))
         (is (clojure.string/starts-with? (-> outs first :val) "----"))
         (map (fn [output] (let [{:keys [val tag]} output]
@@ -39,58 +111,32 @@
                             (is (string? val)))) outs)
         (let [{:keys [tag val]} ret]
           (is (= :ret tag))
-          (is (nil? (read-string val))))
+          (is (nil? (read-string val)))))
 
-        (let [results (shared-eval "(dir clojure.set)")
-              outs    (butlast results)
-              ret     (last results)]
-          (is (= 12 (count outs)))
-          (is (= (inc (count outs)) (count results)))
-          (is (clojure.string/starts-with? (-> outs first :val) "difference"))
-          (map (fn [output] (let [{:keys [val tag]} output]
-                              (is (= :out tag))
-                              (is (string? val)))) outs)
-          (let [{:keys [tag val]} ret]
-            (is (= :ret tag))
-            (is (nil? (read-string val)))))
+      (let [results (sync-results prepl-opts "(source max)")
+            outs    (butlast results)
+            ret     (last results)]
+        (is (= 1 (count outs)))
+        (is (= (inc (count outs)) (count results)))
+        (is (clojure.string/starts-with? (-> outs first :val) "(defn max"))
+        (map (fn [output] (let [{:keys [val tag]} output]
+                            (is (= :out tag))
+                            (is (string? val)))) outs)
+        (let [{:keys [tag val]} ret]
+          (is (= :ret tag))
+          (is (nil? (read-string val)))))
 
-        (let [results (shared-eval "(find-doc #\"root.*cause\")")
-              outs    (butlast results)
-              ret     (last results)]
-          (is (>= (count outs) 20))
-          (is (= (inc (count outs)) (count results)))
-          (is (clojure.string/starts-with? (-> outs first :val) "----"))
-          (map (fn [output] (let [{:keys [val tag]} output]
-                              (is (= :out tag))
-                              (is (string? val)))) outs)
-          (let [{:keys [tag val]} ret]
-            (is (= :ret tag))
-            (is (nil? (read-string val)))))
-
-        (let [results (shared-eval "(source max)")
-              outs    (butlast results)
-              ret     (last results)]
-          (is (= 1 (count outs)))
-          (is (= (inc (count outs)) (count results)))
-          (is (clojure.string/starts-with? (-> outs first :val) "(defn max"))
-          (map (fn [output] (let [{:keys [val tag]} output]
-                              (is (= :out tag))
-                              (is (string? val)))) outs)
-          (let [{:keys [tag val]} ret]
-            (is (= :ret tag))
-            (is (nil? (read-string val)))))
-
-        (let [results (shared-eval "(apropos \"map\")")
-              ret     (first results)]
-          (let [{:keys [tag val]} ret
-                data (read-string val)]
-            (is (= :ret tag))
-            (is (seq? data))
-            (is (>= (count data) 20))))))))
+      (let [results (sync-results prepl-opts "(apropos \"map\")")
+            ret     (first results)]
+        (let [{:keys [tag val]} ret
+              data (read-string val)]
+          (is (= :ret tag))
+          (is (seq? data))
+          (is (>= (count data) 20)))))))
 
 (deftest ^:basic-prepl-tests basic-prepl-tests
   (testing "Basic Clojure forms"
-    (let [shared-eval (evaller :comp-first? true)]
+    (let [shared-eval (->prepl-writer :comp-first? true)]
 
       ; self evaluating forms
       (let [xs ["42" "4.2" ":x" (pr-str "foo")]]
@@ -117,7 +163,7 @@
 
 (deftest ^:common-invocation-tests common-invocation-tests
   (testing "Standard, side effects and recursion"
-    (let [shared-eval (evaller)]
+    (let [shared-eval (->prepl-writer)]
 
       ; Standard invocations
       (let [resp (shared-eval "(+ 3 4)")
@@ -150,7 +196,7 @@
 
 (deftest ^:read-lambda-tests read-lambda-tests
   (testing "Lambdas"
-    (let [shared-eval (evaller :comp-first? true)]
+    (let [shared-eval (->prepl-writer :comp-first? true)]
 
       (let [{:keys [val]} (shared-eval "(map #(inc %) (range 3))")]
         (is (= '(1 2 3) (read-string val))))
@@ -160,7 +206,7 @@
 
 (deftest ^:reader-char-tests reader-char-tests
   (testing "Reader special characters"
-    (let [shared-eval (evaller :comp-first? true)]
+    (let [shared-eval (->prepl-writer :comp-first? true)]
 
       (let [{:keys [val]} (shared-eval "'l33t")]
         (is (= 'l33t (read-string val))))
@@ -189,7 +235,7 @@
 
 (deftest ^:comment-tests comment-tests
   (testing "Various comment styles"
-    (let [shared-eval (evaller :comp-first? true)]
+    (let [shared-eval (->prepl-writer :comp-first? true)]
 
       (let [input ";; 42"
             {:keys [tag val form]} (shared-eval input)]
@@ -217,7 +263,7 @@
 
 (deftest ^:multi-form-tests multi-form-tests
   (testing "Multiple forms in a buffer"
-    (let [shared-eval (evaller)]
+    (let [shared-eval (->prepl-writer)]
       (let [resp          (shared-eval "(def x 1) x")
             first-result  (first resp)
             second-result (last resp)]
@@ -232,7 +278,7 @@
 
 (deftest ^:add-lib-tests add-lib-tests
   (testing "Test spec / add-lib"
-    (let [shared-eval (evaller)]
+    (let [shared-eval (->prepl-writer)]
 
       (let [add-ok (shared-eval "(add-lib 'vvvvalvalval/supdate {:mvn/version \"0.2.3\"})")]
         (is (boolean? (read-string (:val (last add-ok))))))
@@ -250,7 +296,7 @@
 
 (deftest ^:graceful-fail-tests graceful-fail-tests
   (testing "Test graceful failures for syntax and spec errors"
-    (let [shared-eval (evaller :comp-first? true)]
+    (let [shared-eval (->prepl-writer :comp-first? true)]
 
       (let [{:keys [phase ex-data tag val]} (shared-eval "(prn \"000")]
         (is (and (map? ex-data)
@@ -266,7 +312,7 @@
 
       (let [{:keys [tag val]} (shared-eval "(defn x (+ 1 2))")
             {:keys [cause via trace data phase]}
-            (binding [*default-data-reader-fn* socket-prepl/nk-tag-reader]
+            (binding [*default-data-reader-fn* prepl/nk-tag-reader]
               (read-string val))
             problems (::spec/problems data)
             spec     (::spec/spec data)
@@ -285,7 +331,7 @@
 
 (deftest ^:in-namespaces in-namespaces
   (testing "Testing the support and use of namespaces"
-    (let [shared-eval (evaller :comp-first? true)]
+    (let [shared-eval (->prepl-writer :comp-first? true)]
 
       ; NS properties
       (let [{:keys [val ns tag]} (shared-eval "*ns*")]

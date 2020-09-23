@@ -1,10 +1,11 @@
-(ns repl.repl.socket-prepl
+(ns repl.repl.async-prepl
   (:require
     [clojure.core.async :as async]
     [clojure.core.server :refer [prepl]])
   (:import (java.io PipedReader PipedWriter Writer StringReader)
            (clojure.lang LineNumberingPushbackReader)
-           (org.apache.commons.codec.binary Hex)))
+           (org.apache.commons.codec.binary Hex)
+           (java.security MessageDigest)))
 
 (set! *warn-on-reflection* true)
 
@@ -15,6 +16,7 @@
 (defn eval-form
   "Write `form for evaluation` using the `prepl-writer`"
   [^Writer prepl-writer ^String form]
+  (prn :eval-form form)
   (.write prepl-writer form)
   (.flush prepl-writer))
 
@@ -31,7 +33,7 @@
 
 (defn digest
   [s]
-  (let [md5 (java.security.MessageDigest/getInstance "MD5")]
+  (let [md5 (MessageDigest/getInstance "MD5")]
     (-> (.digest md5 (.getBytes ^String s))
         bytes->hex)))
 
@@ -60,18 +62,21 @@
 ;; then one can always interrupt a running prepl thread
 ;; to keep the session going, swap in the standby ...
 ;; and then feed the history into a new standby
+;; or make a list of prepls with ALL evaluated states
+;; with branching of history supported :)
 
 (defn shared-eval
   "Evaluate the form(s) provided in the string `input-string` using the given `prepl-writer`"
-  [out-channel prepl-writer {:keys [form] :as message-data}]
+  [{:keys [out-ch writer]} {:keys [form] :as message-data}]
   (try
     (when-let [forms (message->structured-forms form)]
-      (async/put! out-channel (merge message-data {:correlations forms}))
-      (doall (map (partial eval-form prepl-writer)
+      (async/put! out-ch (merge message-data {:correlations forms}))
+      (doall (map (partial eval-form writer)
                   (map :expr-str (reverse (:exprs forms))))))
-    (catch Exception e
-      [{:tag  :err :message-digest (digest form) :ex-data (ex->data e :eval-forms)
-        :form form :ms 0 :ns "not-known" :val (ex-message e)}])))
+    (catch Throwable ex [(assoc message-data
+                           :message-digest (digest form)
+                           :exception true
+                           :val (ex->data ex :eval-forms))])))
 
 (defn emit
   [out-channel out-map]
@@ -101,7 +106,9 @@
   "Obtain results from `listen-ch` and send them on via `send-fn`"
   [listen-ch send-fn]
   (async/go-loop []
-    (send-fn (async/<! listen-ch))
+    (let [prepl-out (async/<! listen-ch)]
+      (prn :prepl-listen prepl-out)
+      (send-fn prepl-out))
     (recur)))
 
 (comment
@@ -112,20 +119,19 @@
   )
 
 (def repl-requires
-  ["(require '[clojure.repl :refer (source apropos dir pst doc find-doc)])"
-   "(require '[clojure.java.javadoc :refer (javadoc)])"
-   "(require '[clojure.pprint :refer (pp pprint)])"
-   "(require '[clj-deps.core :refer (add-lib)])"])
+  ["(require '[clojure.repl :refer [source apropos dir pst doc find-doc]])"
+   "(require '[clojure.java.javadoc :refer [javadoc]])"
+   "(require '[clojure.pprint :refer [pp pprint]])"
+   "(require '[clj-deps.core :refer [add-lib]])"])
 
 ;; TODO spec ... out-ch and send-fn are required
 (defn ^Writer init-prepl
-  [{:keys [out-ch requires out-fn send-fn]
+  [{:keys [out-ch send-fn requires]
     :or   {requires repl-requires}}]
+  (prepl-listen out-ch send-fn)
   (let [prepl-writer (async-prepl out-ch)]
-    (doall (map (partial shared-eval out-ch prepl-writer)
-                (map #(assoc {} :form % :message-id (digest %)) requires)))
-    (if (and out-fn send-fn)
-      (out-fn out-ch send-fn)
-      (prepl-listen out-ch send-fn))
+    (doall (map (partial shared-eval {:out-ch out-ch :writer prepl-writer})
+                (map #(assoc {} :form % :message-id (digest %))
+                     requires)))
     prepl-writer))
 

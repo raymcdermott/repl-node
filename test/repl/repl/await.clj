@@ -1,10 +1,11 @@
 (ns repl.repl.await
   (:require
     [clojure.core.async :as async]
-    [repl.repl.socket-prepl :refer [init-prepl]]))
+    [repl.repl.async-prepl :as async-prepl]))
 
 (defn fully-correlated?
   [correlated-results]
+  ;(prn :fully-correlated? correlated-results)
   (let [n-inputs  (count (keep :correlations correlated-results))
         n-matches (count (->> correlated-results
                               (filter #(= (:tag %) :ret))
@@ -21,23 +22,30 @@
 
 (defn correlate-results
   [results prepl-output]
+  (prn :prepl-output0 prepl-output)
   (if (nil? prepl-output)
     (reduced results)
     (let [msg-correlations  (keep :correlations results)
           correlated-output (correlate-expression msg-correlations prepl-output)
-          updated           (conj results correlated-output)]
-      (if (fully-correlated? updated)
+          updated           (conj results correlated-output)
+          correlated?       (fully-correlated? updated)]
+      ;(prn :prepl-correlated? correlated?)
+      (if correlated?
         (reduced updated)
         updated))))
 
 (defn gather
-  [results-ch listen-ch _send-fn]
-  (let [inputs-outputs (reduce correlate-results
-                               [] (repeatedly #(async/<!! listen-ch)))]
-    (async/put! results-ch inputs-outputs)))
+  "Called after each test to synchronously gather the results"
+  [results-ch]
+  (reduce correlate-results [] (repeatedly #(async/<!! results-ch))))
 
-(defn async-test-prepl
-  [gather-ch prepl-out-ch]
-  (init-prepl {:out-ch  prepl-out-ch
-               :send-fn identity
-               :out-fn  (partial gather gather-ch)}))
+(defn async-test-prepl-writer
+  "Returns the writer for an initialized PREPL. The results of any forms
+  witten on the writer will be available on the given `results-ch`"
+  [results-ch prepl-out-ch]
+  (let [prepl-writer (async-prepl/init-prepl
+                       {:out-ch  prepl-out-ch
+                        :send-fn (partial async/put! results-ch)})]
+    ;; take init evaluation results off results-ch, not relevant to clients
+    (gather results-ch)
+    prepl-writer))
