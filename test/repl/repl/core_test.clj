@@ -3,80 +3,43 @@
     [clojure.spec.alpha :as spec]
     [clojure.test :refer :all]
     [clojure.string :as str]
-    [repl.repl.await :refer [async-test-prepl-writer gather]]
+    [repl.repl.await :refer [async-test-prepl gather]]
     [repl.repl.async-prepl :as prepl]
-    [clojure.core.async :as async])
-  (:import (clojure.lang DynamicClassLoader)))
+    [clojure.core.async :as async]))
 
-;;; WORKS
-;(let [prepl-out-ch (async/chan)
-;      results-ch   (async/chan)
-;      wrt          (async-test-prepl-writer results-ch prepl-out-ch)
-;      form         "(+ 1 2)"]
-;  (prepl/shared-eval {:out-ch prepl-out-ch :writer wrt}
-;                     (assoc {} :form form :message-id (prepl/digest form)))
-;  (filter :tag (gather results-ch)))
-
-(defn- ->prepl-writer
+(defn- ->prepl-client
   []
-  (let [prepl-out-ch (async/chan)
-        results-ch   (async/chan)]
-    {:out-ch     prepl-out-ch
-     :results-ch results-ch
-     :writer     (async-test-prepl-writer results-ch prepl-out-ch)}))
+  (async-test-prepl (async/chan)))
 
 (defn- run-eval
-  [eval-opts eval-string]
-  (let [form+id {:form eval-string :message-id (prepl/digest eval-string)}]
-    (prepl/shared-eval eval-opts form+id)))
+  [prepl-opts eval-string]
+  (prepl/shared-eval prepl-opts {:form eval-string}))
 
 (defn- sync-results
-  [{:keys [results-ch tags-only?]
-    :or   {tags-only? true}
-    :as   prepl-opts} eval-string]
+  [{:keys [out-ch] :as prepl-opts} eval-string
+   & {:keys [expected-ret-count first-only?]
+      :or   {expected-ret-count 1
+             first-only?        true}}]
   (run-eval prepl-opts eval-string)
-  (let [results (gather results-ch)]
-    (prn :results results)
-    (if tags-only?
-      (filter :tag results)
-      results)))
+  (let [results (gather out-ch expected-ret-count)]
+    ;(prn :results results)
+    (if first-only? (first results) results)))
 
 (deftest ^:version-tests version-tests
   (testing "That we are using 1.10 or later so that we have prepl"
-    (let [prepl-opts (->prepl-writer)
-          form       "*clojure-version*"
-          {:keys [val]} (first (filter :tag (sync-results prepl-opts form)))
+    (let [prepl-opts  (->prepl-client)
+          eval-string "*clojure-version*"
+          {:keys [val]} (sync-results prepl-opts eval-string :first-only? true)
           {:keys [major minor]} (read-string val)]
       (is (= major 1))
       (is (>= minor 10)))))
 
-(deftest ^:xxx-tests xxx-tests
-  (testing "That we are using 1.10 or later so that we have prepl"
-    (let [prepl-opts (->prepl-writer)
-          form       "(+ 1 2)"
-          {:keys [val]} (first (filter :tag (sync-results prepl-opts form)))]
-      (is (= "3" val)))))
-
-(deftest read-xxx-tests
-  (testing "Lambdas"
-    (let [prepl-opts (->prepl-writer)
-          {:keys [val]} (first (sync-results prepl-opts
-                                             "(map #(inc %) (range 3))"))]
-      (is (= '(1 2 3) (read-string val)))
-
-      (let [{:keys [val]} (first (sync-results prepl-opts
-                                               "(map (fn [x] (inc x)) (range 3))"))]
-        (is (= '(1 2 3) (read-string val)))))))
-
-
-
 (deftest ^:prepl-repl-tests prepl-repl-tests
   (testing "REPL options"
-    (let [prepl-opts (->prepl-writer)
-          results    (sync-results prepl-opts "(doc map)")
+    (let [prepl-opts (->prepl-client)
+          results    (sync-results prepl-opts "(doc map)" :first-only? false)
           outs       (butlast results)
           ret        (last results)]
-      (is (= {} results))
       (is (= 4 (count outs)))
       (is (= (inc (count outs)) (count results)))
       (is (clojure.string/starts-with? (-> outs first :val) "----"))
@@ -87,7 +50,7 @@
         (is (= :ret tag))
         (is (nil? (read-string val))))
 
-      (let [results (sync-results prepl-opts "(dir clojure.set)")
+      (let [results (sync-results prepl-opts "(dir clojure.set)" :first-only? false)
             outs    (butlast results)
             ret     (last results)]
         (is (= 12 (count outs)))
@@ -100,7 +63,7 @@
           (is (= :ret tag))
           (is (nil? (read-string val)))))
 
-      (let [results (sync-results prepl-opts "(find-doc #\"root.*cause\")")
+      (let [results (sync-results prepl-opts "(find-doc #\"root.*cause\")" :first-only? false)
             outs    (butlast results)
             ret     (last results)]
         (is (>= (count outs) 20))
@@ -113,7 +76,7 @@
           (is (= :ret tag))
           (is (nil? (read-string val)))))
 
-      (let [results (sync-results prepl-opts "(source max)")
+      (let [results (sync-results prepl-opts "(source max)" :first-only? false)
             outs    (butlast results)
             ret     (last results)]
         (is (= 1 (count outs)))
@@ -126,7 +89,7 @@
           (is (= :ret tag))
           (is (nil? (read-string val)))))
 
-      (let [results (sync-results prepl-opts "(apropos \"map\")")
+      (let [results (sync-results prepl-opts "(apropos \"map\")" :first-only? false)
             ret     (first results)]
         (let [{:keys [tag val]} ret
               data (read-string val)]
@@ -136,50 +99,49 @@
 
 (deftest ^:basic-prepl-tests basic-prepl-tests
   (testing "Basic Clojure forms"
-    (let [shared-eval (->prepl-writer :comp-first? true)]
+    (let [prepl-opts (->prepl-client)]
 
       ; self evaluating forms
       (let [xs ["42" "4.2" ":x" (pr-str "foo")]]
-        (doall (map (fn [x]
-                      (let [{:keys [val]} (shared-eval x)]
-                        (is (= x val))))
-                    xs)))
+        (doall
+          (map
+            (fn [x]
+              (let [{:keys [val]} (sync-results prepl-opts x)]
+                (is (= x val))))
+            xs)))
 
       ; vars
-      (let [{:keys [tag val]} (shared-eval "(def x 1)")]
+      (let [{:keys [tag val]} (sync-results prepl-opts "(def x 1)")]
         (is (= :ret tag))
         (is (= "#'user/x" val)))
 
-      (let [{:keys [val]} (shared-eval "x")]
+      (let [{:keys [val]} (sync-results prepl-opts "x")]
         (is (= "1" val)))
 
       ; Literals
-      (let [{:keys [val]} (shared-eval "[123 \\newline ##Inf nil true :foo]")]
+      (let [{:keys [val]} (sync-results prepl-opts "[123 \\newline ##Inf nil true :foo]")]
         (is (= "[123 \\newline ##Inf nil true :foo]" val)))
 
-      (let [{:keys [val tag]} (shared-eval "#'x")]
+      (let [{:keys [val tag]} (sync-results prepl-opts "#'x")]
         (is (= :ret tag))
         (is (= "#'user/x" val))))))
 
 (deftest ^:common-invocation-tests common-invocation-tests
   (testing "Standard, side effects and recursion"
-    (let [shared-eval (->prepl-writer)]
+    (let [prepl-opts (->prepl-client)]
 
       ; Standard invocations
-      (let [resp (shared-eval "(+ 3 4)")
-            {:keys [val]} (first resp)]
+      (let [{:keys [val]} (sync-results prepl-opts "(+ 3 4)")]
         (is (= "7" val)))
 
-      (let [resp (shared-eval "(inc x)")
-            {:keys [val]} (first resp)]
+      (let [{:keys [val]} (sync-results prepl-opts "(inc x)")]
         (is (= "2" val)))
 
-      (let [resp (shared-eval "(range 2)")
-            {:keys [val]} (first resp)]
+      (let [{:keys [val]} (sync-results prepl-opts "(range 2)")]
         (is (= "(0 1)" val)))
 
       ; Side effects
-      (let [resp (shared-eval "(println \"foo\")")
+      (let [resp (sync-results prepl-opts "(println \"foo\")" :first-only? false)
             {:keys [val tag]} (first resp)]
         (is (= 2 (count resp)))
         (is (= "foo\n" val))
@@ -187,130 +149,124 @@
         (is (= nil (get-in (last resp) [:eval-result :val]))))
 
       ; Loop / recur
-      (let [resp (shared-eval "(loop [results [1]]
-                                 (if (= [1 2 3] results)
-                                   results
-                                   (recur (conj results (inc (last results))))))")
-            {:keys [val]} (first resp)]
+      (let [input "(loop [results [1]]
+                     (if (= [1 2 3] results)
+                       results
+                       (recur (conj results (inc (last results))))))"
+            {:keys [val]} (sync-results prepl-opts input)]
         (is (= [1 2 3] (read-string val)))))))
 
 (deftest ^:read-lambda-tests read-lambda-tests
   (testing "Lambdas"
-    (let [shared-eval (->prepl-writer :comp-first? true)]
+    (let [prepl-opts (->prepl-client)
+          {:keys [val]} (sync-results prepl-opts "(map #(inc %) (range 3))")]
+      (is (= '(1 2 3) (read-string val)))
 
-      (let [{:keys [val]} (shared-eval "(map #(inc %) (range 3))")]
-        (is (= '(1 2 3) (read-string val))))
-
-      (let [{:keys [val]} (shared-eval "(map (fn [x] (inc x)) (range 3))")]
+      (let [{:keys [val]} (sync-results prepl-opts "(map (fn [x] (inc x)) (range 3))")]
         (is (= '(1 2 3) (read-string val)))))))
 
 (deftest ^:reader-char-tests reader-char-tests
   (testing "Reader special characters"
-    (let [shared-eval (->prepl-writer :comp-first? true)]
+    (let [prepl-opts (->prepl-client)
+          {:keys [val]} (sync-results prepl-opts "'l33t")]
+      (is (= 'l33t (read-string val)))
 
-      (let [{:keys [val]} (shared-eval "'l33t")]
-        (is (= 'l33t (read-string val))))
-
-      (let [{:keys [val]} (shared-eval "(quote l33t)")]
+      (let [{:keys [val]} (sync-results prepl-opts "(quote l33t)")]
         (is (= "l33t" val)))
 
-      (let [_ (shared-eval "(def atomic (atom 123))")
-            {:keys [val]} (shared-eval "@atomic")]
+      (let [_ (sync-results prepl-opts "(def atomic (atom 123))")
+            {:keys [val]} (sync-results prepl-opts "@atomic")]
         (is (= "123" val)))
 
-      (let [_ (shared-eval "(defn type-hints [^String s] (clojure.string/trim s))")
-            {:keys [val]} (shared-eval "(type-hints \"  Hello-World    \")")]
+      (let [_ (sync-results prepl-opts "(defn type-hints [^String s] (clojure.string/trim s))")
+            {:keys [val]} (sync-results prepl-opts "(type-hints \"  Hello-World    \")")]
         (is (= (pr-str "Hello-World") val)))
 
-      (let [_ (shared-eval "(def x 1)")
-            _ (shared-eval "(def lst '(a b c))")
-            {:keys [val]} (shared-eval "`(fred x ~x lst ~@lst 7 8 :nine)")]
+      (let [_ (sync-results prepl-opts "(def x 1)")
+            _ (sync-results prepl-opts "(def lst '(a b c))")
+            {:keys [val]} (sync-results prepl-opts "`(fred x ~x lst ~@lst 7 8 :nine)")]
         (is (= "(user/fred user/x 1 user/lst a b c 7 8 :nine)" val)))
 
-      (let [{:keys [val]} (shared-eval "#{1}")]
+      (let [{:keys [val]} (sync-results prepl-opts "#{1}")]
         (is (= "#{1}" val)))
 
-      (let [{:keys [val]} (shared-eval "(re-find #\"\\s*\\d+\" \"Hello-World42\")")]
+      (let [{:keys [val]} (sync-results prepl-opts "(re-find #\"\\s*\\d+\" \"Hello-World42\")")]
         (is (= (pr-str "42") val))))))
 
 (deftest ^:comment-tests comment-tests
   (testing "Various comment styles"
-    (let [shared-eval (->prepl-writer :comp-first? true)]
-
-      (let [input ";; 42"
-            {:keys [tag val form]} (shared-eval input)]
-        (is (= :ret tag))
-        (is (= form input))
-        (is (nil? (read-string val))))
+    (let [prepl-opts (->prepl-client)
+          input      ";; 42"
+          {:keys [tag val form] :as x} (sync-results prepl-opts input)]
+      (is (= :ret tag))
+      (is (= form input))
+      (is (nil? (read-string val)))
 
       (let [input "(comment 42)"
-            {:keys [tag val form]} (shared-eval input)]
+            {:keys [tag val form]} (sync-results prepl-opts input)]
         (is (= :ret tag))
         (is (= form input))
         (is (nil? (read-string val))))
 
       (let [input "#_ xx"
-            {:keys [tag val form]} (shared-eval input)]
+            {:keys [tag val form]} (sync-results prepl-opts input)]
         (is (= :ret tag))
         (is (= form input))
-        (is (nil? (read-string val))))
+        #_(is (nil? (read-string val))))
 
       (let [input "#_ xx 1"
-            {:keys [tag val form]} (shared-eval input)]
+            {:keys [tag val form]} (sync-results prepl-opts input)]
         (is (= :ret tag))
         (is (= form "1"))
         (is (= 1 (read-string val)))))))
 
 (deftest ^:multi-form-tests multi-form-tests
   (testing "Multiple forms in a buffer"
-    (let [shared-eval (->prepl-writer)]
-      (let [resp          (shared-eval "(def x 1) x")
-            first-result  (first resp)
-            second-result (last resp)]
+    (let [prepl-opts    (->prepl-client)
+          resp          (sync-results prepl-opts "(def x 1) x"
+                                      :first-only? false
+                                      :expected-ret-count 2)
+          first-result  (first resp)
+          second-result (last resp)]
+      (is (= 2 (count resp)))
 
-        (is (= 2 (count resp)))
+      (is (= :ret (:tag first-result)))
+      (is (= "#'user/x" (:val first-result)))
 
-        (is (= :ret (:tag first-result)))
-        (is (= "#'user/x" (:val first-result)))
-
-        (is (= :ret (:tag second-result)))
-        (is (= "1" (:val second-result)))))))
+      (is (= :ret (:tag second-result)))
+      (is (= "1" (:val second-result))))))
 
 (deftest ^:add-lib-tests add-lib-tests
   (testing "Test spec / add-lib"
-    (let [shared-eval (->prepl-writer)]
+    (let [prepl-opts (->prepl-client)
+          add-ok     (sync-results prepl-opts "(add-lib 'vvvvalvalval/supdate {:mvn/version \"0.2.3\"})")]
+      (is (boolean? (read-string (:val add-ok))))
 
-      (let [add-ok (shared-eval "(add-lib 'vvvvalvalval/supdate {:mvn/version \"0.2.3\"})")]
-        (is (boolean? (read-string (:val (last add-ok))))))
+      (let [req-ok (sync-results prepl-opts "(require '[vvvvalvalval.supdate.api :refer [supdate]])")]
+        (is (nil? (read-string (:val req-ok)))))
 
-      (let [req-ok (shared-eval "(require '[vvvvalvalval.supdate.api :refer [supdate]])")]
-        (is (nil? (read-string (:val (first req-ok))))))
+      (let [def-ok (sync-results prepl-opts "(def my-input {:a 1 :b [1 2 3] :c {\"d\" [{:e 1 :f 1} {:e 2 :f 2}]} :g 0 :h 0 :i 0})")]
+        (is (= 'var (first (read-string (:val def-ok))))))
 
-      (let [def-ok (shared-eval "(def my-input {:a 1 :b [1 2 3] :c {\"d\" [{:e 1 :f 1} {:e 2 :f 2}]} :g 0 :h 0 :i 0})")]
-        (is (= 'var (first (read-string (:val (first def-ok)))))))
-
-      (let [sup-ok (shared-eval "(supdate my-input {:a inc :b [inc] :c {\"d\" [{:e inc}]} :g [inc inc inc] :my-missing-key inc :i false})")
-            result (read-string (:val (first sup-ok)))]
+      (let [sup-ok (sync-results prepl-opts "(supdate my-input {:a inc :b [inc] :c {\"d\" [{:e inc}]} :g [inc inc inc] :my-missing-key inc :i false})")
+            result (read-string (:val sup-ok))]
         (is (map? result))
         (is (= 3 (:g result)))))))
 
 (deftest ^:graceful-fail-tests graceful-fail-tests
   (testing "Test graceful failures for syntax and spec errors"
-    (let [shared-eval (->prepl-writer :comp-first? true)]
+    (let [prepl-opts (->prepl-client)
+          {:keys [tag val exception] :as x} (sync-results prepl-opts "(prn \"000")]
+      (is (= :ret tag))
+      (is (and (map? val)
+               (true? exception)))
 
-      (let [{:keys [phase ex-data tag val]} (shared-eval "(prn \"000")]
-        (is (and (map? ex-data)
-                 (= :err tag)
-                 (= :read-source phase)))
-        (is (= "java.lang.RuntimeException: EOF while reading string" val)))
+      (let [{:keys [tag val exception] :as x} (sync-results prepl-opts "(")]
+        (is (= :ret tag))
+        (is (and (map? val)
+                 (true? exception))))
 
-      (let [{:keys [phase ex-data tag val]} (shared-eval "(")]
-        (is (and (map? ex-data)
-                 (= :err tag)
-                 (= :read-source phase)))
-        (is (= "java.lang.RuntimeException: EOF while reading, starting at line 1" val)))
-
-      (let [{:keys [tag val]} (shared-eval "(defn x (+ 1 2))")
+      (let [{:keys [tag val]} (sync-results prepl-opts "(defn x (+ 1 2))")
             {:keys [cause via trace data phase]}
             (binding [*default-data-reader-fn* prepl/nk-tag-reader]
               (read-string val))
@@ -331,44 +287,44 @@
 
 (deftest ^:in-namespaces in-namespaces
   (testing "Testing the support and use of namespaces"
-    (let [shared-eval (->prepl-writer :comp-first? true)]
+    (let [prepl-opts (->prepl-client)]
 
       ; NS properties
-      (let [{:keys [val ns tag]} (shared-eval "*ns*")]
+      (let [{:keys [val ns tag]} (sync-results prepl-opts "*ns*")]
         (is (= ns "user"))
         (is (= :ret tag))
         (is (str/ends-with? val "\"user\"]"))
         (is (str/starts-with? val "#object")))
 
       ; creating / switching ns
-      (let [_ (shared-eval "(ns test123)")
-            {:keys [val ns tag]} (shared-eval "*ns*")]
+      (let [_ (sync-results prepl-opts "(ns test123)")
+            {:keys [val ns tag]} (sync-results prepl-opts "*ns*")]
         (is (= ns "test123"))
         (is (= :ret tag))
         (is (str/ends-with? val "\"test123\"]"))
         (is (str/starts-with? val "#object"))
-        (let [{:keys [val ns tag]} (shared-eval "*ns*")]
+        (let [{:keys [val ns tag]} (sync-results prepl-opts "*ns*")]
           (is (= ns "test123"))
           (is (= :ret tag))
           (is (str/ends-with? val "\"test123\"]"))
           (is (str/starts-with? val "#object"))))
 
       ; Functions
-      (let [_ (shared-eval "(in-ns 'user)")
-            {:keys [val tag]} (shared-eval "(defn ns-x2 [x] (+ x x))")]
+      (let [_ (sync-results prepl-opts "(in-ns 'user)")
+            {:keys [val tag]} (sync-results prepl-opts "(defn ns-x2 [x] (+ x x))")]
         (is (= :ret tag))
         (is (= val "#'user/ns-x2")))
 
-      (let [{:keys [val]} (shared-eval "(ns-x2 17)")]
+      (let [{:keys [val]} (sync-results prepl-opts "(ns-x2 17)")]
         (is (= "34" val)))
 
-      (let [{:keys [val tag ns]} (shared-eval "(in-ns 'repl-test)")]
+      (let [{:keys [val tag ns]} (sync-results prepl-opts "(in-ns 'repl-test)")]
         (is (= ns "repl-test"))
         (is (= :ret tag))
         (is (str/ends-with? val "\"repl-test\"]"))
         (is (str/starts-with? val "#object"))
 
-        (let [{:keys [val tag ns]} (shared-eval "(in-ns 'user)")]
+        (let [{:keys [val tag ns]} (sync-results prepl-opts "(in-ns 'user)")]
           (is (= ns "user"))
           (is (= :ret tag))
           (is (str/ends-with? val "\"user\"]"))

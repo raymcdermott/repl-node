@@ -1,11 +1,12 @@
 (ns repl.repl.async-prepl
   (:require
     [clojure.core.async :as async]
-    [clojure.core.server :refer [prepl]])
-  (:import (java.io PipedReader PipedWriter Writer StringReader)
-           (clojure.lang LineNumberingPushbackReader)
+    [clojure.core.server :refer [io-prepl start-server]])
+  (:import (java.io StringReader OutputStreamWriter BufferedReader InputStreamReader)
+           (clojure.lang LineNumberingPushbackReader DynamicClassLoader)
            (org.apache.commons.codec.binary Hex)
-           (java.security MessageDigest)))
+           (java.security MessageDigest)
+           (java.net ServerSocket Socket)))
 
 (set! *warn-on-reflection* true)
 
@@ -13,12 +14,12 @@
   [tag val]
   {:nk-tag tag :nk-val (read-string (str val))})
 
-(defn eval-form
-  "Write `form for evaluation` using the `prepl-writer`"
-  [^Writer prepl-writer ^String form]
-  (prn :eval-form form)
-  (.write prepl-writer form)
-  (.flush prepl-writer))
+(defn write-form
+  "Write `form` for evaluation in the PREPL using the `writer`"
+  [writer form]
+  (binding [*out*              writer
+            *flush-on-newline* true]
+    (prn form)))
 
 (defmacro with-read-known
   "Evaluates body with *read-eval* set to a \"known\" value,
@@ -32,25 +33,24 @@
   (Hex/encodeHexString ba))
 
 (defn digest
-  [s]
-  (let [md5 (MessageDigest/getInstance "MD5")]
-    (-> (.digest md5 (.getBytes ^String s))
-        bytes->hex)))
+  [^String s]
+  (when s
+    (let [md5 (MessageDigest/getInstance "MD5")]
+      (->> (.getBytes s)
+           (.digest md5)
+           bytes->hex))))
 
-(defn message->structured-forms
+(defn message->forms
   "Produce a map of expression(s) in string `s` that can be read. Any read failure throws"
   [s]
   (let [EOF    (Object.)
-        reader (LineNumberingPushbackReader. (StringReader. s))
-        msg    {:message-digest (digest s)
-                :message        s}]
-    (reduce (fn [results [form expr-str]]
-              (if (identical? form EOF)
-                (reduced results)
-                (update results
-                        :exprs conj {:expr-id  (digest expr-str)
-                                     :expr-str expr-str})))
-            msg (repeatedly #(with-read-known (read+string reader false EOF))))))
+        reader (LineNumberingPushbackReader. (StringReader. s))]
+    (reduce
+      (fn [forms [form _]]
+        (if (identical? form EOF)
+          (reduced forms)
+          (conj forms form)))
+      [] (repeatedly #(with-read-known (read+string reader false EOF))))))
 
 (defn- ex->data
   [ex phase]
@@ -66,57 +66,57 @@
 ;; with branching of history supported :)
 
 (defn shared-eval
-  "Evaluate the form(s) provided in the string `input-string` using the given `prepl-writer`"
-  [{:keys [out-ch writer]} {:keys [form] :as message-data}]
+  "Evaluate the form(s) provided in the string `form` using the given `writer`"
+  [{:keys [out-ch reader writer]} {:keys [form] :as message-data}]
   (try
-    (when-let [forms (message->structured-forms form)]
-      (async/put! out-ch (merge message-data {:correlations forms}))
-      (doall (map (partial eval-form writer)
-                  (map :expr-str (reverse (:exprs forms))))))
-    (catch Throwable ex [(assoc message-data
-                           :message-digest (digest form)
-                           :exception true
-                           :val (ex->data ex :eval-forms))])))
-
-(defn emit
-  [out-channel out-map]
-  (let [lock        (Object.)
-        d           (digest (:form out-map))
-        message-map (assoc out-map :expr-id d)]
-    (locking lock
+    (let [forms      (message->forms form)
+          form-count (count forms)]
+      (if-not (seq forms)
+        (async/put! out-ch (assoc message-data :ns "user", :ms 0 :tag :ret :val "nil"))
+        (do (doall (map (partial write-form writer) forms))
+            (let [EOF           (Object.)
+                  prepl-read-fn #(with-read-known (read reader false EOF))]
+              (loop [output-map (prepl-read-fn)
+                     results    [output-map]]
+                (async/put! out-ch output-map)
+                (when-not (= form-count
+                             (count (filter #(= (:tag %) :ret) results)))
+                  (let [output-map (prepl-read-fn)]
+                    (recur output-map (conj results output-map)))))))))
+    (catch Throwable ex
       (async/put!
-        out-channel
-        (if-not (#{:ret :tap} (:tag message-map))
-          out-map
-          (try
-            (assoc message-map :val (pr-str (:val message-map)))
-            (catch Throwable ex (assoc message-map
-                                  :val (ex->data ex :print-eval-result) :exception true))))))))
+        out-ch
+        (assoc message-data :exception true :ns "user"
+                            :ms 0 :tag :ret :val (ex->data ex :eval-forms))))))
 
-(defn ^Writer async-prepl
-  "Create a prepl that will output results to out-ch.
-  Returns a Writer that can be used to write forms for evaluation."
-  [out-ch]
-  (let [pipe   (PipedWriter.)
-        reader (LineNumberingPushbackReader. (PipedReader. pipe))]
-    (async/thread (prepl reader (partial emit out-ch)))
-    pipe))
+(defn shared-prepl-server
+  "Create a PREPL socket-server and return the port on which it is available"
+  [opts]
+  (let [socket-opts    (merge {:port          0
+                               :name          "repl-node"
+                               :server-daemon false
+                               :accept        'clojure.core.server/io-prepl}
+                              opts)
+        current-thread (Thread/currentThread)
+        cl             (.getContextClassLoader current-thread)]
+    (.setContextClassLoader current-thread (DynamicClassLoader. cl))
+    (.getLocalPort ^ServerSocket (start-server socket-opts))))
 
-(defn prepl-listen
-  "Obtain results from `listen-ch` and send them on via `send-fn`"
-  [listen-ch send-fn]
-  (async/go-loop []
-    (let [prepl-out (async/<! listen-ch)]
-      (prn :prepl-listen prepl-out)
-      (send-fn prepl-out))
-    (recur)))
+(defn prepl-client
+  "Attaching to a PREPL on a given `port`"
+  [port]
+  (let [client (Socket. "localhost" ^long port)
+        reader (-> client .getInputStream InputStreamReader.
+                   BufferedReader. LineNumberingPushbackReader.)
+        writer (-> client .getOutputStream OutputStreamWriter.)]
+    {:reader reader
+     :writer writer}))
 
-(comment
-  (defn run-cmds
-    [writer]
-    ;; TODO: prevent this from being sent by users!!
-    (.write writer ":repl/quit\n"))
-  )
+(defn shared-prepl
+  ([]
+   (shared-prepl {}))
+  ([opts]
+   (prepl-client (shared-prepl-server opts))))
 
 (def repl-requires
   ["(require '[clojure.repl :refer [source apropos dir pst doc find-doc]])"
@@ -124,14 +124,19 @@
    "(require '[clojure.pprint :refer [pp pprint]])"
    "(require '[clj-deps.core :refer [add-lib]])"])
 
-;; TODO spec ... out-ch and send-fn are required
-(defn ^Writer init-prepl
-  [{:keys [out-ch send-fn requires]
-    :or   {requires repl-requires}}]
-  (prepl-listen out-ch send-fn)
-  (let [prepl-writer (async-prepl out-ch)]
-    (doall (map (partial shared-eval {:out-ch out-ch :writer prepl-writer})
-                (map #(assoc {} :form % :message-id (digest %))
-                     requires)))
-    prepl-writer))
+(defn init-prepl
+  [{:keys [out-ch requires]
+    :or   {requires repl-requires}
+    :as   opts}]
+  (let [prepl-opts (assoc (shared-prepl) :out-ch out-ch)
+        digested   (map #(assoc {} :form % :message-id (digest %)) requires)]
+    (doall (map (partial shared-eval prepl-opts) digested))
+    (merge opts prepl-opts)))
 
+(comment
+  (defn run-cmds
+    [writer]
+    ;; TODO: use this as a .close option
+    ;; TODO: prevent this from being sent by users!!
+    (.write writer ":repl/quit\n"))
+  )
