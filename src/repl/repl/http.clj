@@ -133,16 +133,6 @@
   [{:keys [?data]}]
   (socket-prepl/shared-eval @prepl-opts ?data))
 
-;; ORIGINAL
-(comment
-  (defmethod ^:private -event-msg-handler :repl-repl/eval
-    [{:keys [?data]}]
-    (let [input-form (:form ?data)
-          out-ch     (:out-ch prepl-defaults)
-          result     (socket-prepl/shared-eval out-ch @prepl-opts input-form)
-          response   (assoc ?data :prepl-response result)]
-      (>send [:repl-repl/eval response]))))
-
 (defn- register-socket [state client-id]
   (assoc state (keyword client-id) {}))
 
