@@ -2,7 +2,7 @@
   (:require
     [aleph.http :as aleph]
     [aleph.netty :as netty]
-    [clojure.core.async :refer [chan]]
+    [clojure.core.async :as async :refer [chan ]]
     [compojure.core :refer [defroutes GET POST]]
     [compojure.route :as route]
     [repl.repl.async-prepl :as socket-prepl]
@@ -111,24 +111,27 @@
 
 (defonce ^:private socket-connections (atom {}))
 
+(defn forward
+  [out-ch]
+  (async/go-loop []
+    (let [prepl-map (async/<! out-ch)]
+      (println :prepl-map prepl-map)
+      (>send [:repl-repl/eval prepl-map])
+      (recur))))
+
+(def prepl-chan (chan))
+(def ^:private prepl-opts (atom (socket-prepl/init-prepl {:out-ch  prepl-chan})))
+(def _forwarding (forward prepl-chan))
+
 ;; REPL
 (defmethod ^:private -event-msg-handler :repl-repl/keystrokes
   ;; Send the keystrokes to the team
   [{:keys [?data]}]
   (>send [:repl-repl/keystrokes ?data]))
 
-(defn send-eval-result
-  [result]
-  (>send [:repl-repl/eval result]))
-
-(def ^:private prepl-defaults {:out-ch  (chan)
-                               :send-fn send-eval-result})
-
-(def ^:private prepl-writer (atom (socket-prepl/init-prepl prepl-defaults)))
-
 (defmethod ^:private -event-msg-handler :repl-repl/eval
   [{:keys [?data]}]
-  (socket-prepl/shared-eval (:out-ch prepl-defaults) @prepl-writer ?data))
+  (socket-prepl/shared-eval @prepl-opts ?data))
 
 ;; ORIGINAL
 (comment
@@ -136,7 +139,7 @@
     [{:keys [?data]}]
     (let [input-form (:form ?data)
           out-ch     (:out-ch prepl-defaults)
-          result     (socket-prepl/shared-eval out-ch @prepl-writer input-form)
+          result     (socket-prepl/shared-eval out-ch @prepl-opts input-form)
           response   (assoc ?data :prepl-response result)]
       (>send [:repl-repl/eval response]))))
 
