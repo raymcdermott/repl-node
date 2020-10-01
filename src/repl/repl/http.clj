@@ -115,7 +115,6 @@
   [out-ch]
   (async/go-loop []
     (let [prepl-map (async/<! out-ch)]
-      (println :prepl-map prepl-map)
       (>send [:repl-repl/eval prepl-map])
       (recur))))
 

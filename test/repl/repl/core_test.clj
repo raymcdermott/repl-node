@@ -6,11 +6,16 @@
     [repl.repl.await :refer [async-test-prepl gather]]
     [repl.repl.async-prepl :as prepl]
     [repl.repl.user :as user-specs]
-    [clojure.core.async :as async]))
+    [clojure.core.async :as async])
+  (:import (clojure.lang DynamicClassLoader)))
 
 (defn- ->prepl-client
   []
-  (async-test-prepl (async/chan)))
+  (let [current-thread (Thread/currentThread)
+        classloader    (.getContextClassLoader current-thread)]
+    ; Need DynamicClassLoader to support add-lib
+    (.setContextClassLoader current-thread (DynamicClassLoader. classloader))
+    (async-test-prepl (async/chan))))
 
 (def test-user (user-specs/->user "test-user" "uid0"))
 
