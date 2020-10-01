@@ -68,24 +68,24 @@
 (defn shared-eval
   "Evaluate the form(s) provided in the string `form` using the given `writer`"
   [{:keys [out-ch reader writer]} {:keys [form user] :as message-data}]
-  ;; add user from message data
-  (prn :shared-eval :keys (keys message-data))
   (try
     (let [forms      (message->forms form)
           form-count (count forms)]
       (if-not (seq forms)
         (async/put! out-ch (assoc message-data :ns "user", :ms 0 :tag :ret :val "nil" :user user))
-        (do (doall (map (partial write-form writer) forms))
-            (let [EOF           (Object.)
-                  prepl-read-fn #(with-read-known (read reader false EOF))]
-              (loop [output-map (prepl-read-fn)
-                     results    [output-map]]
-                (let [out-map (assoc output-map :user user)]
-                  (async/put! out-ch out-map)
-                  (when-not (= form-count
-                               (count (filter #(= (:tag %) :ret) results)))
-                    (let [output-map (prepl-read-fn)]
-                      (recur output-map (conj results out-map))))))))))
+        (let [_     (doall (map (partial write-form writer) forms))
+              EOF   (Object.)
+              rd-fn #(with-read-known (read reader false EOF))]
+          (loop [output-map    (rd-fn)
+                 ret-tag-count 0]
+            (let [out-map       (assoc output-map :user user)
+                  ret-tag-count (if (= :ret (:tag output-map))
+                                  (inc ret-tag-count)
+                                  ret-tag-count)]
+              (async/put! out-ch out-map)
+              (when-not (= form-count ret-tag-count)
+                (recur (rd-fn)
+                       ret-tag-count)))))))
     (catch Throwable ex
       (async/put!
         out-ch

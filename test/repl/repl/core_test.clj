@@ -5,15 +5,18 @@
     [clojure.string :as str]
     [repl.repl.await :refer [async-test-prepl gather]]
     [repl.repl.async-prepl :as prepl]
+    [repl.repl.user :as user-specs]
     [clojure.core.async :as async]))
 
 (defn- ->prepl-client
   []
   (async-test-prepl (async/chan)))
 
+(def test-user (user-specs/->user "test-user" "uid0"))
+
 (defn- run-eval
   [prepl-opts eval-string]
-  (prepl/shared-eval prepl-opts {:form eval-string}))
+  (prepl/shared-eval prepl-opts {:form eval-string :user test-user}))
 
 (defn- sync-results
   [{:keys [out-ch] :as prepl-opts} eval-string
