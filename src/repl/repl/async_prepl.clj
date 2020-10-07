@@ -69,16 +69,17 @@
   "Evaluate the form(s) provided in the string `form` using the given `writer`"
   [{:keys [out-ch reader writer]} {:keys [form user] :as message-data}]
   (try
-    (let [forms      (message->forms form)
-          form-count (count forms)]
+    (let [forms        (message->forms form)
+          form-count   (count forms)
+          default-data {:ns "user", :ms 0 :tag :ret :val "nil" :user user :input form}]
       (if-not (seq forms)
-        (async/put! out-ch (assoc message-data :ns "user", :ms 0 :tag :ret :val "nil" :user user))
-        (let [_     (doall (map (partial write-form writer) forms))
+        (async/put! out-ch (merge message-data default-data))
+        (let [_sent (doall (map (partial write-form writer) forms))
               EOF   (Object.)
               rd-fn #(with-read-known (read reader false EOF))]
           (loop [output-map    (rd-fn)
                  ret-tag-count 0]
-            (let [out-map       (assoc output-map :user user)
+            (let [out-map       (assoc output-map :user user :input form)
                   ret-tag-count (if (= :ret (:tag output-map))
                                   (inc ret-tag-count)
                                   ret-tag-count)]

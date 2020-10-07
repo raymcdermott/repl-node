@@ -34,6 +34,6 @@
                 :extra-deps  {clojure-watch {:mvn/version "0.1.14"}}
                 :main-opts   ["-i" "@repl/repl/opener.clj" "-r"]}
 
-  :heroku      {:jvm-opts  ["-Dclojure.main.report=stderr"]
+  :server      {:jvm-opts  ["-Dclojure.main.report=stderr"]
                 :main-opts ["-m" "repl.repl.http"]}}}
 

@@ -1,1 +1,1 @@
-web: clojure -A:heroku
+web: clojure -A:server
