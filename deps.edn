@@ -16,7 +16,7 @@
   ring/ring-defaults          {:mvn/version "0.3.1"}
 
   repl-repl/specs             {:git/url "https://github.com/raymcdermott/repl-specs.git"
-                               :sha     "f2fca99e65c9f126cdd8108948e934dc3384928b"}}
+                               :sha     "3968f52190b01ab15c1800ae7f834df979764649"}}
 
  :aliases
  {:test        {:extra-paths ["test"]
