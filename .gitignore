@@ -6,3 +6,4 @@
 *.iml
 .cpcache
 db
+linuxkit-*
