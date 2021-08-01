@@ -30,7 +30,7 @@
              first-only?        true}}]
   (run-eval prepl-opts eval-string)
   (let [results (gather out-ch expected-ret-count)]
-    ;(prn :results results)
+    (prn :results results)
     (if first-only? (first results) results)))
 
 (deftest ^:version-tests version-tests
