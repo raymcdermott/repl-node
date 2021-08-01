@@ -45,4 +45,4 @@ jobs:
             ${{ runner.os }}-
 
       - name: Run CLJ Tests
-        run: clojure -A:test
+        run: clojure -M:test
