@@ -13,7 +13,7 @@ An EDN map will contain the expression(s) to be evaluated.
 ## Usage
 
 ```bash
-$ clojure -A:repl
+$ clojure -A:server
 ```
 
 The web server will be exposed on port `56665` by default
@@ -21,13 +21,13 @@ The web server will be exposed on port `56665` by default
 Optionally you can provide a port number:
 
 ```bash
-$ clojure -A:repl 8888
+$ clojure -A:server 8888
 ```
 
 Optionally you can provide the port number via an environment variable `PORT`:
 
 ```bash
-$ PORT=8998 clojure -A:repl 
+$ PORT=8998 clojure -A:server
 ```
 
 In all cases, a PREPL socket server will be started locally on an available port.
