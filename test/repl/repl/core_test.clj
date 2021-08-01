@@ -247,8 +247,9 @@
 (deftest ^:add-lib-tests add-lib-tests
   (testing "Test spec / add-lib"
     (let [prepl-opts (->prepl-client)
-          add-ok     (sync-results prepl-opts "(add-lib 'vvvvalvalval/supdate {:mvn/version \"0.2.3\"})")]
-      (is (boolean? (read-string (:val add-ok))))
+          add-ok     (sync-results prepl-opts "(add-lib 'vvvvalvalval/supdate {:mvn/version \"0.2.3\"})"
+                                   :first-only? false)]
+      (is (boolean? (read-string (:val (last add-ok)))))
 
       (let [req-ok (sync-results prepl-opts "(require '[vvvvalvalval.supdate.api :refer [supdate]])")]
         (is (nil? (read-string (:val req-ok)))))
