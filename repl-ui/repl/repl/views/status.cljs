@@ -27,6 +27,7 @@
         network-style  {:color (if network-status
                                  "rgba(127, 191, 63, 0.32)"
                                  "red")}]
+    (println :clojure-version clojure-version)
     [v-box :children
      [[line]
       [h-box :size "20px" :style status-style
