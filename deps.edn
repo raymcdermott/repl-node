@@ -32,11 +32,7 @@
   :server      {:extra-paths ["repl-server" "resources"]
                 :jvm-opts    ["-Dclojure.main.report=stderr"]
                 :main-opts   ["-m" "repl.repl.http"]}
-
-  :uberjar     {:replace-deps {com.github.seancorfield/depstar {:mvn/version "2.1.278"}}
-                :exec-fn      hf.depstar/uberjar
-                :exec-args    {:aot false}}
-
+  
   :server-repl {:extra-paths ["repl-server" "resources"]
                 :main-opts   ["-r"]}
 

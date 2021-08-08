@@ -6,4 +6,4 @@
 .cpcache
 db
 linuxkit-*
-resources/public/js/compiled/out
+resources/public/js/compiled
