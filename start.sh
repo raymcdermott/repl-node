@@ -2,6 +2,8 @@
 
 echo Starting REPL-REPL build
 
-set -x
+set -ex
 
-clojure -M:cljs:figwheel:dist && clojure -M:clj:server
+clojure -M:cljs:figwheel:dist
+
+clojure -M:clj:server
