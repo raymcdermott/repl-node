@@ -1,1 +1,1 @@
-web: ./start.sh
+web: clojure -A:clj:server
