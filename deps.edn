@@ -49,6 +49,7 @@
                              cljsjs/google-diff-match-patch {:mvn/version "62f2e689f498f9c92dbc588c58750addec9b1654-0"}}}
 
   :figwheel    {:extra-paths ["resources" "repl-ui"]
+                :jvm-opts    ["-Dclojure.main.report=stderr"]
                 :extra-deps  {com.bhauman/figwheel-main       {:mvn/version "0.2.13"}
                               com.bhauman/rebel-readline-cljs {:mvn/version "0.1.4"}}}
 
