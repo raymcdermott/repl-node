@@ -24,7 +24,7 @@
   [{:keys [event]}]
   (println "Unhandled event: %s" event))
 
-(def client-uid (atom nil))
+(defonce client-uid (atom nil))
 
 (defmethod -event-msg-handler :chsk/state
   [{:keys [?data]}]

@@ -13,5 +13,3 @@ return new cljs.core.PersistentVector(null, 1, 5, cljs.core.PersistentVector.EMP
 return new cljs.core.PersistentVector(null, 2, 5, cljs.core.PersistentVector.EMPTY_NODE, [repl.repl.views.editor.main_panels,logged_in_user], null);
 }
 });
-
-//# sourceMappingURL=main_view.js.map

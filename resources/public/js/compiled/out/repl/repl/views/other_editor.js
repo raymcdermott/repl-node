@@ -46,9 +46,7 @@ repl.repl.views.other_editor.other_panels = (function repl$repl$views$other_edit
 var border = new cljs.core.PersistentArrayMap(null, 1, [new cljs.core.Keyword(null,"border","border",1444987323),"1px solid lightgrey"], null);
 var gray = cljs.core.merge.call(null,new cljs.core.PersistentArrayMap(null, 2, [new cljs.core.Keyword(null,"background-color","background-color",570434026),"lightgrey",new cljs.core.Keyword(null,"color","color",1011675173),new cljs.core.Keyword(null,"black","black",1294279647)], null),border);
 var black = cljs.core.merge.call(null,new cljs.core.PersistentArrayMap(null, 2, [new cljs.core.Keyword(null,"background-color","background-color",570434026),new cljs.core.Keyword(null,"black","black",1294279647),new cljs.core.Keyword(null,"color","color",1011675173),new cljs.core.Keyword(null,"white","white",-483998618)], null),border);
-return new cljs.core.PersistentVector(null, 7, 5, cljs.core.PersistentVector.EMPTY_NODE, [re_com.core.h_box,new cljs.core.Keyword(null,"gap","gap",80255254),"2px",new cljs.core.Keyword(null,"size","size",1098693007),"auto",new cljs.core.Keyword(null,"children","children",-940561982),cljs.core.vec.call(null,cljs.core.map.call(null,(function (p1__31703_SHARP_,p2__31704_SHARP_){
-return repl.repl.views.other_editor.other_panel.call(null,p1__31703_SHARP_,p2__31704_SHARP_);
+return new cljs.core.PersistentVector(null, 7, 5, cljs.core.PersistentVector.EMPTY_NODE, [re_com.core.h_box,new cljs.core.Keyword(null,"gap","gap",80255254),"2px",new cljs.core.Keyword(null,"size","size",1098693007),"auto",new cljs.core.Keyword(null,"children","children",-940561982),cljs.core.vec.call(null,cljs.core.map.call(null,(function (p1__33398_SHARP_,p2__33399_SHARP_){
+return repl.repl.views.other_editor.other_panel.call(null,p1__33398_SHARP_,p2__33399_SHARP_);
 }),other_users,cljs.core.cycle.call(null,new cljs.core.PersistentVector(null, 2, 5, cljs.core.PersistentVector.EMPTY_NODE, [gray,black], null))))], null);
 });
-
-//# sourceMappingURL=other_editor.js.map

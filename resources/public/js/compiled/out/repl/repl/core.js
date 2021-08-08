@@ -25,5 +25,3 @@ repl.repl.core.dev_setup.call(null);
 return repl.repl.core.mount_root.call(null);
 });
 goog.exportSymbol('repl.repl.core.init', repl.repl.core.init);
-
-//# sourceMappingURL=core.js.map

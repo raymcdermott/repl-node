@@ -16,11 +16,11 @@ if((typeof repl !== 'undefined') && (typeof repl.repl !== 'undefined') && (typeo
 } else {
 repl.repl.views.visual_history.history_style = new cljs.core.PersistentArrayMap(null, 1, [new cljs.core.Keyword(null,"padding","padding",1660304693),"5px 5px 0px 10px"], null);
 }
-repl.repl.views.visual_history.history_item_component = (function repl$repl$views$visual_history$history_item_component(p__31697){
-var map__31698 = p__31697;
-var map__31698__$1 = cljs.core.__destructure_map.call(null,map__31698);
-var history = cljs.core.get.call(null,map__31698__$1,new cljs.core.Keyword(null,"history","history",-247395220));
-var index = cljs.core.get.call(null,map__31698__$1,new cljs.core.Keyword(null,"index","index",-1531685915));
+repl.repl.views.visual_history.history_item_component = (function repl$repl$views$visual_history$history_item_component(p__33392){
+var map__33393 = p__33392;
+var map__33393__$1 = cljs.core.__destructure_map.call(null,map__33393);
+var history = cljs.core.get.call(null,map__33393__$1,new cljs.core.Keyword(null,"history","history",-247395220));
+var index = cljs.core.get.call(null,map__33393__$1,new cljs.core.Keyword(null,"index","index",-1531685915));
 var line_count = cljs.core.count.call(null,clojure.string.split_lines.call(null,clojure.string.trim.call(null,clojure.string.trim_newline.call(null,history))));
 return new cljs.core.PersistentVector(null, 7, 5, cljs.core.PersistentVector.EMPTY_NODE, [re_com.core.h_box,new cljs.core.Keyword(null,"gap","gap",80255254),"5px",new cljs.core.Keyword(null,"align","align",1964212802),new cljs.core.Keyword(null,"center","center",-748944368),new cljs.core.Keyword(null,"children","children",-940561982),new cljs.core.PersistentVector(null, 3, 5, cljs.core.PersistentVector.EMPTY_NODE, [new cljs.core.PersistentVector(null, 7, 5, cljs.core.PersistentVector.EMPTY_NODE, [re_com.core.md_icon_button,new cljs.core.Keyword(null,"md-icon-name","md-icon-name",681785863),"zmdi-caret-left-circle",new cljs.core.Keyword(null,"tooltip","tooltip",-1809677058),"Send to the editor",new cljs.core.Keyword(null,"on-click","on-click",1632826543),(function (){
 return re_frame.core.dispatch.call(null,new cljs.core.PersistentVector(null, 2, 5, cljs.core.PersistentVector.EMPTY_NODE, [new cljs.core.Keyword("repl.repl.events","from-history","repl.repl.events/from-history",-385698773),index], null));
@@ -52,5 +52,3 @@ return null;
 repl.repl.views.visual_history.editor_history = (function repl$repl$views$visual_history$editor_history(){
 return new cljs.core.PersistentVector(null, 13, 5, cljs.core.PersistentVector.EMPTY_NODE, [re_com.core.v_box,new cljs.core.Keyword(null,"gap","gap",80255254),"15px",new cljs.core.Keyword(null,"width","width",-384071477),"15px",new cljs.core.Keyword(null,"align","align",1964212802),new cljs.core.Keyword(null,"center","center",-748944368),new cljs.core.Keyword(null,"justify","justify",-722524056),new cljs.core.Keyword(null,"end","end",-268185958),new cljs.core.Keyword(null,"style","style",-496642736),new cljs.core.PersistentArrayMap(null, 1, [new cljs.core.Keyword(null,"padding","padding",1660304693),"0px 0px 20px 0px"], null),new cljs.core.Keyword(null,"children","children",-940561982),new cljs.core.PersistentVector(null, 1, 5, cljs.core.PersistentVector.EMPTY_NODE, [new cljs.core.PersistentVector(null, 1, 5, cljs.core.PersistentVector.EMPTY_NODE, [repl.repl.views.visual_history.browse_history], null)], null)], null);
 });
-
-//# sourceMappingURL=visual_history.js.map
