@@ -6,8 +6,7 @@
             [ring.middleware.defaults]
             [taoensso.sente :as sente]
             [taoensso.sente.packers.transit :as sente-transit]
-            [taoensso.sente.server-adapters.http-kit :refer [get-sch-adapter]]
-            [taoensso.timbre :refer [debugf infof]])
+            [taoensso.sente.server-adapters.http-kit :refer [get-sch-adapter]])
   (:import (java.util UUID)))
 
 (set! *warn-on-reflection* true)

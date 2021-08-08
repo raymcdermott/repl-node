@@ -1,7 +1,6 @@
 (ns repl.repl.http
   (:require
     [clojure.core.async :as async :refer [chan]]
-    [compojure.core :refer [defroutes GET POST]]
     [org.httpkit.server :as http-kit]
     [repl.repl.async-prepl :as socket-prepl]
     [repl.repl.user :as user-specs]
