@@ -2,6 +2,6 @@
 
 set -ex
 
-clojure -M:cljs:figwheel:dist
+clojure -A:cljs:figwheel:dist
 
 java -cp repl-repl.jar clojure.main -m repl.repl.http
