@@ -83,6 +83,7 @@
                   ret-tag-count (if (= :ret (:tag output-map))
                                   (inc ret-tag-count)
                                   ret-tag-count)]
+              (println :out-map out-map)
               (async/put! out-ch out-map)
               (when-not (= form-count ret-tag-count)
                 (recur (rd-fn)

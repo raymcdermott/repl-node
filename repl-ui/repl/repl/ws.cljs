@@ -29,6 +29,7 @@
 (defmethod -event-msg-handler :chsk/state
   [{:keys [?data]}]
   (let [[_ new-state-map] (have vector? ?data)]
+    (println :state new-state-map)
     (reset! client-uid (:uid new-state-map))
     (re-frame/dispatch [:repl.repl.events/client-uid (:uid new-state-map)])
     (re-frame/dispatch [:repl.repl.events/network-status (:open? new-state-map)])))
