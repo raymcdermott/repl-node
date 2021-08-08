@@ -1,1 +1,1 @@
-web: clojure -A:clj:server
+web: java -cp repl-repl.jar clojure.main -m repl.repl.http
