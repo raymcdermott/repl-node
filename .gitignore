@@ -1,4 +1,3 @@
-/target
 *.class
 /.lein-*
 /.nrepl-port
@@ -7,3 +6,4 @@
 .cpcache
 db
 linuxkit-*
+/resources/public/js/compiled

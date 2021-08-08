@@ -88,10 +88,9 @@
                 (recur (rd-fn)
                        ret-tag-count)))))))
     (catch Throwable ex
-      (async/put!
-        out-ch
-        (assoc message-data :exception true :ns "user" :user user
-                            :ms 0 :tag :ret :val (ex->data ex :eval-forms))))))
+      (async/put! out-ch (assoc message-data
+                           :exception true :ns "user" :user user
+                           :ms 0 :tag :ret :val (ex->data ex :eval-forms))))))
 
 (defn shared-prepl-server
   "Create a PREPL socket-server and return the port on which it is available"

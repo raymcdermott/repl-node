@@ -1,64 +1,18 @@
 (ns repl.repl.http
   (:require
-    [aleph.http :as aleph]
-    [aleph.netty :as netty]
-    [clojure.core.async :as async :refer [chan ]]
+    [clojure.core.async :as async :refer [chan]]
     [compojure.core :refer [defroutes GET POST]]
-    [compojure.route :as route]
+    [org.httpkit.server :as http-kit]
     [repl.repl.async-prepl :as socket-prepl]
     [repl.repl.user :as user-specs]
-    [ring.middleware.defaults]
+    [repl.repl.web :as web]
     [taoensso.sente :as sente]
-    [taoensso.sente.packers.transit :as sente-transit]
-    [taoensso.sente.server-adapters.aleph :refer [get-sch-adapter]]
     [taoensso.timbre :refer [debugf infof]])
-  (:import (java.util UUID)
-           (clojure.lang DynamicClassLoader)
-           (java.io Closeable)))
+  (:import (clojure.lang DynamicClassLoader)
+           (java.awt Desktop HeadlessException)
+           (java.net URI)))
 
 (set! *warn-on-reflection* true)
-
-; TODO: move to a mesg per client model (not broadcast on uid)
-; TODO: then kill clients that don't ack
-
-;; (timbre/set-level! :trace) ; Uncomment for more logging
-(reset! sente/debug-mode?_ false)                           ; Uncomment for extra debug info
-
-;;;; Define our Sente channel socket (chsk) band
-
-(defn- ws-uid-fn
-  "Create a UUID per connection that can be used as a key for pushing data"
-  [_]
-  (str (UUID/randomUUID)))
-
-(let [;; Serialization format, must use same val for client + band:
-      packer      (sente-transit/get-transit-packer)
-      chsk-server (sente/make-channel-socket-server!
-                    (get-sch-adapter)
-                    ;; prefer CORS & Strict cookies
-                    {:csrf-token-fn (fn [_] true)
-                     :packer        packer
-                     :user-id-fn    ws-uid-fn})
-      {:keys [ch-recv send-fn connected-uids ajax-post-fn ajax-get-or-ws-handshake-fn]} chsk-server]
-
-  (def ^:private ring-ajax-post ajax-post-fn)
-  (def ^:private ring-ajax-get-or-ws-handshake ajax-get-or-ws-handshake-fn)
-  (def ^:private ch-chsk ch-recv)                           ; ChannelSocket's receive channel
-  (def ^:private chsk-send! send-fn)                        ; ChannelSocket's send API fn
-  (def ^:private connected-uids connected-uids))            ; Watchable, read-only atom
-
-;;;; Ring handlers
-(defroutes ^:private ring-routes
-           (GET "/chsk" ring-req (ring-ajax-get-or-ws-handshake ring-req))
-           (POST "/chsk" ring-req (ring-ajax-post ring-req))
-           (route/files "/" {:root "resources/public"})
-           (route/not-found "<h1>Page not found</h1>"))
-
-(def ^:private main-ring-handler
-  (ring.middleware.defaults/wrap-defaults
-    ring-routes ring.middleware.defaults/site-defaults))
-
-(defonce ^:private broadcast-enabled?_ (atom true))
 
 ;;;; Sente event handlers
 ; Dispatch on event-id
@@ -79,11 +33,6 @@
   (when ?reply-fn
     (?reply-fn {:unmatched-event-as-echoed-from-from-server event})))
 
-(defmethod ^:private -event-msg-handler :example/toggle-broadcast
-  [{:keys [?reply-fn]}]
-  (let [loop-enabled? (swap! broadcast-enabled?_ not)]
-    (?reply-fn loop-enabled?)))
-
 ;;;; LOGIN
 
 ;; Sente uses Ring by default but we use WS to track users
@@ -93,15 +42,7 @@
   "Send `msg` to each member"
   [msg]
   (let [uids (user-specs/get-uids @connected-users)]
-    (doall (map #(chsk-send! % msg) uids))))
-
-;; Note: CLIENT-ID = UID
-
-;; Debug
-(add-watch connected-uids :connected-uids
-           (fn [_ _ old new]
-             (when (not= old new)
-               (println :connected-uids new))))
+    (doall (map #(web/chsk-send! % msg) uids))))
 
 ;; Debug
 (add-watch connected-users :connected-users
@@ -114,17 +55,18 @@
 (defn forward
   [out-ch]
   (async/go-loop []
-    (let [prepl-map (async/<! out-ch)]
-      (>send [:repl-repl/eval prepl-map])
-      (recur))))
+                 (let [prepl-map (async/<! out-ch)]
+                   (>send [:repl-repl/eval prepl-map])
+                   (recur))))
 
 (def prepl-chan (chan))
 (def ^:private prepl-opts (atom (socket-prepl/init-prepl {:out-ch  prepl-chan})))
 (def _forwarding (forward prepl-chan))
 
 ;; REPL
+
+;; Send keystrokes around the team
 (defmethod ^:private -event-msg-handler :repl-repl/keystrokes
-  ;; Send the keystrokes to the team
   [{:keys [?data]}]
   (>send [:repl-repl/keystrokes ?data]))
 
@@ -198,45 +140,42 @@
 (defn- start-router! []
   (stop-router!)
   (reset! router_ (sente/start-server-chsk-router!
-                    ch-chsk event-msg-handler)))
+                    web/ch-chsk event-msg-handler)))
 
 ;;;; Init stuff
 
 (defonce ^:private web-server_ (atom nil))
+(defn- stop-web-server! [] (when-let [stop-fn @web-server_] (stop-fn)))
+(defn start-web-server! [& [port]]
+  (stop-web-server!)
+  (let [port (or port 0)                                    ; 0 => Choose any available port
+        ring-handler (var web/main-ring-handler)
+        [port stop-fn] (let [stop-fn (http-kit/run-server ring-handler {:port port})]
+                         [(:local-port (meta stop-fn)) (fn [] (stop-fn :timeout 100))])
+        uri (format "http://localhost:%s/" port)]
 
-(defn- stop-web-server!
-  []
-  (when-let [stop-fn @web-server_] (stop-fn)))
+    (infof "Web server is running at `%s`" uri)
+    (try
+      (.browse (Desktop/getDesktop) (URI. uri))
+      (catch HeadlessException _))
 
-(defn- start-web-server!
-  [& [port]]
-  (let [port         (or port 0)                            ; 0 => Choose any available port
-        ring-handler (var main-ring-handler)
-        [port stop-fn] (let [server (aleph/start-server ring-handler {:port port})
-                             p      (promise)]
-                         (future @p)                        ; Workaround for Ref. https://goo.gl/kLvced
-                         [(netty/port server)
-                          (fn []
-                            (.close ^Closeable server)
-                            (deliver p nil))])
-        uri          (format "http://localhost:%s/" port)]
-
-    (infof "Web server on URL is `%s`" uri)
     (reset! web-server_ stop-fn)))
 
-(defn stop!
-  []
-  (stop-router!)
-  (stop-web-server!))
+(defn stop! [] (stop-router!) (stop-web-server!))
 
 (defn- start!
-  [port]
-  (start-router!)
-  (start-web-server! port))
+  ([]
+   (start! 56665))
+  ([port]
+   (start-router!)
+   (start-web-server! port)))
 
-(defn start-reptile-server
+(defn restart! []
+  (stop!) (start!))
+
+(defn start-repl-server
   ([secret]
-   (start-reptile-server secret "56665"))
+   (start-repl-server secret "56665"))
   ([secret port]
    (reset! shared-secret secret)
    (let [port           (Integer/parseInt port)
@@ -249,4 +188,4 @@
 (defn -main [& _args]
   (let [port   (or (System/getenv "PORT") "56665")
         secret (or (System/getenv "TEAM_SECRET") "h4Pr0p05-50P0RP4-4PR0p05-50p0rP4")]
-    (start-reptile-server secret port)))
+    (start-repl-server secret port)))
