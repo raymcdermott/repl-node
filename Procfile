@@ -1,1 +1,1 @@
-web: ./start.sh
+web: java -cp repl-repl.jar clojure.main -m repl.repl.http
