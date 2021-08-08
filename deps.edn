@@ -53,10 +53,10 @@
                 :extra-deps  {com.bhauman/figwheel-main       {:mvn/version "0.2.13"}
                               com.bhauman/rebel-readline-cljs {:mvn/version "0.1.4"}}}
 
-  :client      {:jvm-opts  ["-Xmx1g" "-Xms1g" "-Dclojure.main.report=stderr"]
+  :client      {:jvm-opts  ["-Dclojure.main.report=stderr"]
                 :main-opts ["-m" "figwheel.main" "-b" "dev" "-r"]}
 
-  :dist        {:jvm-opts  ["-Xmx1g" "-Xms1g" "-Dclojure.main.report=stderr"]
+  :dist        {:jvm-opts  ["-Dclojure.main.report=stderr"]
                 :main-opts ["-m" "figwheel.main" "-bo" "dev"]}
 
   :client-test {:extra-paths ["test"]
