@@ -9,7 +9,8 @@
     [taoensso.timbre :refer [debugf infof]])
   (:import (clojure.lang DynamicClassLoader)
            (java.awt Desktop HeadlessException)
-           (java.net URI)))
+           (java.net URI))
+  (:gen-class))
 
 (set! *warn-on-reflection* true)
 
