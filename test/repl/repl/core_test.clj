@@ -3,7 +3,7 @@
     [clojure.spec.alpha :as spec]
     [clojure.test :refer :all]
     [clojure.string :as str]
-    [repl.repl.await :refer [async-test-prepl gather]]
+    [repl.repl.await :refer [async-test-prepl gather-sync]]
     [repl.repl.async-prepl :as prepl]
     [repl.repl.user :as user-specs]
     [clojure.core.async :as async])
@@ -24,13 +24,12 @@
   (prepl/shared-eval prepl-opts {:form eval-string :user test-user}))
 
 (defn- sync-results
-  [{:keys [out-ch] :as prepl-opts} eval-string
+  [{:keys [opts] :as prepl-opts} eval-string
    & {:keys [expected-ret-count first-only?]
       :or   {expected-ret-count 1
              first-only?        true}}]
-  (run-eval prepl-opts eval-string)
-  (let [results (gather out-ch expected-ret-count)]
-    ;(prn :results results)
+  @(run-eval prepl-opts eval-string)
+  (let [results (gather-sync (:out-ch opts) expected-ret-count)]
     (if first-only? (first results) results)))
 
 (deftest ^:version-tests version-tests
@@ -339,4 +338,28 @@
           (is (str/ends-with? val "\"user\"]"))
           (is (str/starts-with? val "#object")))))))
 
+(deftest ^:cancellation cancel-tests
+  (testing "Cancel will create a valid new prepl and retain state"
+    (let [prepl-opts  (->prepl-client)
+          _resp       (sync-results prepl-opts "(def x 1)")
+          _prepl-opts (prepl/cancel prepl-opts)
+          prepl-opts  (->prepl-client)
+          resp        (sync-results prepl-opts "x")
+          resp*1      (sync-results prepl-opts "*1")]
+      (is (= :ret (:tag resp)))
+      (is (= "1" (:val resp)))
+      (is (= :ret (:tag resp*1)))
+      (is (= "1" (:val resp*1)))))
+  (testing "Cancel will kill long running form evaluations"
+    (let [prepl-opts  (->prepl-client)
+          _resp       (sync-results prepl-opts "(def x 1)")
+          _resp       (run-eval prepl-opts "(range)")
+          _prepl-opts (prepl/cancel prepl-opts)
+          prepl-opts  (->prepl-client)
+          resp        (sync-results prepl-opts "x")
+          resp*1      (sync-results prepl-opts "*1")]
+      (is (= :ret (:tag resp)))
+      (is (= "1" (:val resp)))
+      (is (= :ret (:tag resp*1)))
+      (is (= "1" (:val resp*1))))))
 

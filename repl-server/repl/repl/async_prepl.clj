@@ -1,7 +1,7 @@
 (ns repl.repl.async-prepl
   (:require
-    [clojure.core.async :as async]
-    [clojure.core.server :refer [start-server]])
+    [clojure.core.async :as a]
+    [clojure.core.server :refer [start-server io-prepl]])
   (:import (java.io StringReader OutputStreamWriter BufferedReader InputStreamReader)
            (clojure.lang LineNumberingPushbackReader DynamicClassLoader)
            (org.apache.commons.codec.binary Hex)
@@ -41,72 +41,68 @@
            bytes->hex))))
 
 (defn message->forms
-  "Produce a map of expression(s) in string `s` that can be read. Any read failure throws"
+  "Produce a list of expression(s) in string `s` that can be read. Any read failure throws"
   [s]
   (let [EOF    (Object.)
         reader (LineNumberingPushbackReader. (StringReader. s))]
-    (reduce
-      (fn [forms [form _]]
-        (if (identical? form EOF)
-          (reduced forms)
-          (conj forms form)))
-      [] (repeatedly #(with-read-known (read+string reader false EOF))))))
+    (reduce (fn [forms [form _]]
+              (if (identical? form EOF)
+                (reduced forms)
+                (conj forms form)))
+            [] (repeatedly #(with-read-known (read+string reader false EOF))))))
 
 (defn- ex->data
   [ex phase]
   (assoc (Throwable->map ex) :phase phase))
 
-;; TODO -- how to make eval cancellable?
-;; idea ...
-;; keep a separate PREPL that is given successful evals
-;; then one can always interrupt a running prepl thread
-;; to keep the session going, swap in the standby ...
-;; and then feed the history into a new standby
-;; or make a list of prepls with ALL evaluated states
-;; with branching of history supported :)
-
-(defn shared-eval
+(defn- shared-eval*
   "Evaluate the form(s) provided in the string `form` using the given `writer`"
-  [{:keys [out-ch reader writer]} {:keys [form user] :as message-data}]
-  (try
-    (let [forms        (message->forms form)
-          form-count   (count forms)
-          default-data {:ns "user", :ms 0 :tag :ret :val "nil" :user user :input form}]
-      (if-not (seq forms)
-        (async/put! out-ch (merge message-data default-data))
-        (let [_sent (doall (map (partial write-form writer) forms))
-              EOF   (Object.)
-              rd-fn #(with-read-known (read reader false EOF))]
-          (loop [output-map    (rd-fn)
-                 ret-tag-count 0]
-            (let [out-map       (assoc output-map :user user :input form)
-                  ret-tag-count (if (= :ret (:tag output-map))
-                                  (inc ret-tag-count)
-                                  ret-tag-count)]
-              (async/put! out-ch out-map)
-              (when-not (= form-count ret-tag-count)
-                (recur (rd-fn)
-                       ret-tag-count)))))))
-    (catch Throwable ex
-      (async/put! out-ch (assoc message-data
-                           :exception true :ns "user" :user user
-                           :ms 0 :tag :ret :val (ex->data ex :eval-forms))))))
+  [{:keys [opts client]} {:keys [form user] :as message-data}]
+  (let [{:keys [reader writer]} client
+        {:keys [out-ch]} opts]
+    (try
+      (let [forms        (message->forms form)
+            form-count   (count forms)
+            default-data {:ns "user", :ms 0 :tag :ret :val "nil" :user user :input form}]
+        (if-not (seq forms)
+          (a/put! out-ch (merge message-data default-data))
+          (let [_sent   (doall (map (partial write-form writer) forms))
+                EOF     (Object.)
+                read-fn #(with-read-known (read reader false EOF))]
+            (loop [output-map    (read-fn)
+                   ret-tag-count 0]
+              (let [out-map       (assoc output-map :user user :input form)
+                    ret-tag-count (if (= :ret (:tag output-map))
+                                    (inc ret-tag-count)
+                                    ret-tag-count)]
+                (a/put! out-ch out-map)
+                (when-not (= form-count ret-tag-count)
+                  (recur (read-fn)
+                         ret-tag-count)))))))
+      (catch Throwable ex
+        (a/put! out-ch (assoc message-data
+                         :exception true :ns "user" :user user
+                         :ms 0 :tag :ret :val (ex->data ex :eval-forms)))))))
+
+(defn shared-eval [prepl-opts message-data]
+  (future (shared-eval* prepl-opts message-data)))
 
 (defn shared-prepl-server
   "Create a PREPL socket-server and return the port on which it is available"
   [opts]
-  (let [socket-opts    (merge {:port          0
-                               :name          "repl-node"
-                               :server-daemon false
-                               :accept        'clojure.core.server/io-prepl}
+  (let [socket-opts    (merge {:port   0
+                               :name   "repl-node"
+                               :accept 'clojure.core.server/io-prepl}
                               opts)
         current-thread (Thread/currentThread)
-        cl             (.getContextClassLoader current-thread)]
-    (.setContextClassLoader current-thread (DynamicClassLoader. cl))
-    (.getLocalPort ^ServerSocket (start-server socket-opts))))
+        cl             (.getContextClassLoader current-thread)
+        _              (.setContextClassLoader current-thread (DynamicClassLoader. cl))
+        socket         (start-server socket-opts)]
+    {:socket socket
+     :port   (.getLocalPort ^ServerSocket socket)}))
 
-(defn prepl-client
-  "Attaching to a PREPL on a given `port`"
+(defn prepl-rw
+  "Get the prepl client reader & writer for a socket on the given `port`"
   [port]
   (let [client (Socket. "localhost" ^long port)
         reader (-> client .getInputStream InputStreamReader.
@@ -119,7 +115,18 @@
   ([]
    (shared-prepl {}))
   ([opts]
-   (prepl-client (shared-prepl-server opts))))
+   (let [server (shared-prepl-server opts)]
+     {:opts   opts
+      :server server
+      :client (prepl-rw (:port server))})))
+
+(defn cancel
+  [{:keys [server opts]}]
+  (let [new-server (shared-prepl-server opts)]
+    (.close ^ServerSocket (:socket server))
+    {:opts   opts
+     :server new-server
+     :client (prepl-rw (:port new-server))}))
 
 (def repl-requires
   ["(require '[clojure.repl :refer [source apropos dir pst doc find-doc]])"
@@ -131,9 +138,10 @@
   [{:keys [out-ch requires]
     :or   {requires repl-requires}
     :as   opts}]
-  (let [prepl-opts (assoc (shared-prepl) :out-ch out-ch)
-        digested   (map #(assoc {} :form % :message-id (digest %)) requires)]
-    (doall (map (partial shared-eval prepl-opts) digested))
+  (let [channel-opts {:out-ch out-ch}
+        prepl-opts   (assoc (shared-prepl channel-opts) :init-count (count requires))
+        digested     (map #(assoc {} :form % :message-id (digest %)) requires)]
+    (doall (map (fn [form] @(shared-eval prepl-opts form)) digested))
     (merge opts prepl-opts)))
 
 (comment

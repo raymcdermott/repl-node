@@ -52,7 +52,7 @@
 
 (defonce ^:private socket-connections (atom {}))
 
-(defn forward
+(defn forward-results
   [out-ch]
   (async/go-loop []
                  (let [prepl-map (async/<! out-ch)]
@@ -61,7 +61,7 @@
 
 (def prepl-chan (chan))
 (def ^:private prepl-opts (atom (socket-prepl/init-prepl {:out-ch  prepl-chan})))
-(def _forwarding (forward prepl-chan))
+(def _forwarding (forward-results prepl-chan))
 
 ;; REPL
 
@@ -73,6 +73,10 @@
 (defmethod ^:private -event-msg-handler :repl-repl/eval
   [{:keys [?data]}]
   (socket-prepl/shared-eval @prepl-opts ?data))
+
+(defmethod ^:private -event-msg-handler :repl-repl/cancel
+  [_]
+  (socket-prepl/cancel @prepl-opts))
 
 (defn- register-socket [state client-id]
   (assoc state (keyword client-id) {}))
