@@ -1,7 +1,7 @@
 (ns repl.repl.async-prepl
   (:require
     [clojure.core.async :as a]
-    [clojure.core.server :refer [start-server io-prepl]])
+    [clojure.core.server :refer [start-server]])
   (:import (java.io StringReader OutputStreamWriter BufferedReader InputStreamReader)
            (clojure.lang LineNumberingPushbackReader DynamicClassLoader)
            (org.apache.commons.codec.binary Hex)
